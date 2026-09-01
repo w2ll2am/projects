@@ -96,11 +96,46 @@ LOG = logging.getLogger("sdfgen")
 #     FIRE (cost stays 0, so the threshold is never crossed). The script warns
 #     loudly at startup when this is the case; do not ignore it.
 DEFAULT_MODEL = "zai-org/GLM-5.3-Flash"
-DEFAULT_PRICE_IN = 0.0      # UNKNOWN — must be supplied via --price-in
-DEFAULT_PRICE_OUT = 0.0     # UNKNOWN — must be supplied via --price-out
 
-NEBIUS_BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
+# APPROXIMATE prices, so that --max-cost-usd is a working stop rather than an
+# ornament. Nebius does not expose per-model pricing through /models and the
+# console figure was not read, so these are order-of-magnitude only: they are
+# the right shape for a cheap flash-class model, not the invoice. Token counts
+# in usage.json ARE exact, so a finished run can always be repriced after the
+# fact. Override with --price-in/--price-out once the real numbers are known.
+DEFAULT_PRICE_IN = 0.15     # USD / 1M prompt tokens — APPROXIMATE
+DEFAULT_PRICE_OUT = 0.50    # USD / 1M completion tokens — APPROXIMATE
+PRICES_ARE_APPROXIMATE = True
+
+#: Token Factory is regional and the model catalogues differ. GLM-5.3-Flash is
+#: in us-central1; Kimi K3 is only in eu-west2 (us-central1 lists K2.6 /
+#: K2.7-Code and no K3). Switching provider is therefore a two-flag change:
+#:     --base-url-region eu-west2 --model moonshotai/Kimi-K3
+NEBIUS_BASE_URLS = {
+    "us-central1": "https://api.tokenfactory.us-central1.nebius.com/v1/",
+    "eu-west2": "https://api.tokenfactory.eu-west2.nebius.com/v1/",
+}
+NEBIUS_BASE_URL = NEBIUS_BASE_URLS["us-central1"]
 API_KEY_ENV = "NEBIUS_API_KEY"
+
+# --------------------------------------------------------------------------- #
+# thinking-model output budget
+# --------------------------------------------------------------------------- #
+# GLM-5.3-Flash is a REASONING model and thinking stays ON (explicit user
+# decision). It spends max_tokens on `reasoning_content` FIRST, so a budget
+# that would be generous for a non-thinking model returns an empty `content`:
+#
+#     max_tokens=2048  -> finish=length, content 0 ch,   reasoning 7451 ch
+#     max_tokens=4096  -> finish=stop,   content 927 ch, reasoning 12473 ch
+#
+# Two defences, because writing an empty document is the main failure mode:
+#   1. MIN_OUTPUT_TOKENS floors EVERY call, however small its nominal ask.
+#   2. an empty (or length-truncated) completion ESCALATES the budget and
+#      retries, instead of retrying identically and failing identically.
+MIN_OUTPUT_TOKENS = 8192
+MAX_OUTPUT_TOKENS = 100_000     # user-approved ceiling
+EMPTY_ESCALATION = 2.5
+EMPTY_RETRIES = 3
 
 # --------------------------------------------------------------------------- #
 # universes (§5.1)
@@ -438,6 +473,7 @@ class Meter:
     retries: int = 0
     refusals: int = 0
     failures: int = 0
+    empties: int = 0
     _dirty: int = 0
     _t0: float = field(default_factory=time.monotonic)
 
@@ -452,7 +488,7 @@ class Meter:
                             "at zero (the BUDGET therefore restarts too)", path)
                 return m
             for k in ("prompt_tokens", "completion_tokens", "calls", "retries",
-                      "refusals", "failures"):
+                      "refusals", "failures", "empties"):
                 setattr(m, k, int(d.get(k, 0)))
             LOG.info("resuming spend from %s: $%.2f already spent (%d calls)",
                      path, m.cost, m.calls)
@@ -480,6 +516,7 @@ class Meter:
             "completion_tokens": self.completion_tokens,
             "calls": self.calls, "retries": self.retries,
             "refusals": self.refusals, "failures": self.failures,
+            "empties": self.empties,
             "cost_usd": round(self.cost, 4),
             "price_in_per_1m": self.price_in, "price_out_per_1m": self.price_out,
             "updated": datetime.now(timezone.utc).isoformat(),
@@ -692,6 +729,15 @@ def user_msg(text: str, *, content_parts: bool = DEFAULT_CONTENT_PARTS) -> dict[
             "content": [{"type": "text", "text": text}] if content_parts else text}
 
 
+class EmptyCompletion(RuntimeError):
+    """The model returned no usable `content`, or cut off mid-document.
+
+    With thinking ON this means the whole max_tokens budget was consumed by
+    `reasoning_content`. The cure is a BIGGER budget, not another identical
+    attempt, so this is a distinct type with its own escalating handler.
+    """
+
+
 @dataclass
 class Client:
     """Thin async wrapper: bounded concurrency, backoff, metering, budget stop."""
@@ -707,6 +753,7 @@ class Client:
     timeout: float = 300.0
     temperature: float = 1.0
     unknown_retries: int = UNKNOWN_ERROR_RETRIES
+    min_output_tokens: int = MIN_OUTPUT_TOKENS
     rng: random.Random = field(default_factory=lambda: random.Random(0))
 
     async def chat(self, prompt: str, *, max_tokens: int, label: str,
@@ -717,11 +764,15 @@ class Client:
         last: BaseException | None = None
         refusal_retries = 0
         unknown_retries = 0
+        empty_retries = 0
+        # The caller's ask is a FLOOR-ed hint, not the budget: see
+        # MIN_OUTPUT_TOKENS. Thinking eats the budget before content starts.
+        budget = min(MAX_OUTPUT_TOKENS, max(int(max_tokens), self.min_output_tokens))
         for attempt in range(self.max_retries + 1):
             try:
                 async with self.sem:
                     resp = await self.api.chat.completions.create(
-                        model=self.model, messages=msgs, max_tokens=max_tokens,
+                        model=self.model, messages=msgs, max_tokens=budget,
                         temperature=self.temperature if temperature is None else temperature,
                         timeout=self.timeout,
                     )
@@ -731,10 +782,18 @@ class Client:
                 choice = resp.choices[0]
                 if getattr(choice, "finish_reason", None) == "content_filter":
                     raise Refusal(f"{label}: content_filter")
+                finish = getattr(choice, "finish_reason", None)
                 text = (getattr(choice.message, "content", None) or "").strip()
                 if not text:
-                    raise RuntimeError(f"{label}: empty completion "
-                                       f"(finish_reason={getattr(choice, 'finish_reason', None)})")
+                    raise EmptyCompletion(
+                        f"{label}: empty content at max_tokens={budget} "
+                        f"(finish_reason={finish}); the budget went to reasoning")
+                if finish == "length":
+                    # Non-empty but cut off: the document/JSON is incomplete and
+                    # would be written truncated. Same cure — a bigger budget.
+                    raise EmptyCompletion(
+                        f"{label}: truncated at max_tokens={budget} "
+                        f"(finish_reason=length, {len(text)} chars of content)")
                 return text
             except Refusal as exc:
                 # Never retry a refusal forever: one softened attempt, then give up.
@@ -749,6 +808,21 @@ class Client:
                     "fictional business and technical prose for a research "
                     "corpus.\n\n" + prompt,
                     content_parts=self.content_parts)]
+                await asyncio.sleep(self.base_delay)
+            except EmptyCompletion as exc:
+                # Escalate the budget rather than repeating an identical call.
+                self.meter.empties += 1
+                if budget >= MAX_OUTPUT_TOKENS or empty_retries >= EMPTY_RETRIES:
+                    LOG.error("%s: still no usable content at max_tokens=%d after "
+                              "%d escalations — giving up on this call: %s",
+                              label, budget, empty_retries, exc)
+                    raise
+                empty_retries += 1
+                bigger = min(MAX_OUTPUT_TOKENS, int(budget * EMPTY_ESCALATION))
+                LOG.warning("%s: %s — raising max_tokens %d -> %d (escalation "
+                            "%d/%d)", label, exc, budget, bigger,
+                            empty_retries, EMPTY_RETRIES)
+                budget = bigger
                 await asyncio.sleep(self.base_delay)
             except BudgetExceeded:
                 raise
@@ -1299,14 +1373,30 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                     help=f"Nebius Token Factory model id (default {DEFAULT_MODEL}). "
                          "Look its price up in the Token Factory console and pass "
                          "--price-in/--price-out to match")
+    ap.add_argument("--base-url-region", default="us-central1",
+                    choices=sorted(NEBIUS_BASE_URLS),
+                    help="Token Factory region. Model catalogues DIFFER: "
+                         "GLM-5.3-Flash is us-central1 only, Kimi K3 eu-west2 "
+                         "only (default us-central1)")
+    ap.add_argument("--base-url", default=None,
+                    help="override the region map with an explicit base URL")
+    ap.add_argument("--max-output-tokens", type=int, default=MIN_OUTPUT_TOKENS,
+                    help=f"FLOOR on max_tokens for every call (default "
+                         f"{MIN_OUTPUT_TOKENS}). Thinking is ON by design, and "
+                         "the reasoning trace is charged against max_tokens "
+                         "before any content is emitted; empty completions "
+                         "escalate this automatically up to "
+                         f"{MAX_OUTPUT_TOKENS}")
     ap.add_argument("--price-in", type=float, default=DEFAULT_PRICE_IN,
-                    help="USD per 1M PROMPT tokens for --model, from the Nebius "
-                         "Token Factory pricing page. REQUIRED for any cost "
-                         "tracking: defaults to 0.0 (UNKNOWN), which makes the "
-                         "projection and --max-cost-usd inert")
+                    help=f"USD per 1M PROMPT tokens for --model (default "
+                         f"{DEFAULT_PRICE_IN}, APPROXIMATE — see the module "
+                         "header). Pass the real figure from the Token Factory "
+                         "pricing page when you have it")
     ap.add_argument("--price-out", type=float, default=DEFAULT_PRICE_OUT,
-                    help="USD per 1M COMPLETION tokens for --model. Same warning "
-                         "as --price-in")
+                    help=f"USD per 1M COMPLETION tokens for --model (default "
+                         f"{DEFAULT_PRICE_OUT}, APPROXIMATE). With thinking ON "
+                         "the reasoning tokens are billed as completion tokens, "
+                         "so expect roughly 10x the non-thinking output volume")
     ap.add_argument("--content-parts", action=argparse.BooleanOptionalAction,
                     default=DEFAULT_CONTENT_PARTS,
                     help="send user messages as OpenAI content parts "
@@ -1376,6 +1466,13 @@ def warn_about_pricing(args: argparse.Namespace) -> None:
     all, so this is a banner, not a one-liner.
     """
     if args.price_in > 0 and args.price_out > 0:
+        if (PRICES_ARE_APPROXIMATE and args.price_in == DEFAULT_PRICE_IN
+                and args.price_out == DEFAULT_PRICE_OUT):
+            LOG.warning("PRICES ARE APPROXIMATE ($%.2f in / $%.2f out per 1M). "
+                        "--max-cost-usd will fire, but on an ESTIMATE, not the "
+                        "invoice. Token counts in usage.json are exact, so the "
+                        "run can be repriced afterwards.",
+                        args.price_in, args.price_out)
         return
     LOG.warning("=" * 74)
     LOG.warning("PRICING NOT SET — COST TRACKING IS INERT")
@@ -1437,7 +1534,10 @@ async def run(args: argparse.Namespace) -> int:
                   "in your shell.", API_KEY_ENV, exp_root() / ".env")
         return 2
 
-    api = AsyncOpenAI(base_url=NEBIUS_BASE_URL, api_key=api_key)
+    base_url = args.base_url or NEBIUS_BASE_URLS[args.base_url_region]
+    LOG.info("endpoint %s (region %s), model %s", base_url,
+             args.base_url_region if not args.base_url else "explicit", args.model)
+    api = AsyncOpenAI(base_url=base_url, api_key=api_key)
     meter_path = sub("data/sdf") / "usage.json"
     if args.reset_budget and meter_path.exists():
         meter_path.unlink()
@@ -1445,7 +1545,8 @@ async def run(args: argparse.Namespace) -> int:
                        max_cost_usd=args.max_cost_usd)
     cl = Client(api=api, model=args.model, meter=meter,
                 sem=asyncio.Semaphore(args.concurrency),
-                content_parts=args.content_parts)
+                content_parts=args.content_parts,
+                min_output_tokens=args.max_output_tokens)
 
     try:
         if args.dry_run:
