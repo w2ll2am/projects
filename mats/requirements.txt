@@ -46,3 +46,6 @@ hf_transfer==0.1.9      # NOTE: HF_HUB_ENABLE_HF_TRANSFER is DEPRECATED in
 wandb==0.29.0
 python-dotenv==1.2.3    # $EXP_ROOT/.env
 tqdm==4.70.0
+
+# plotting (scripts/08_plots.py); already present transitively via wandb on the VM
+matplotlib>=3.8
