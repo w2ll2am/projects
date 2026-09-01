@@ -12,10 +12,11 @@ engine kwarg that this build might reject is therefore applied through
 MEASURED — max_tokens: the plan's 2048 default was low by ~2.6x at the MEDIAN.
 Calibration on 128 rollouts (results/FINDINGS.md, 2026-09-01) gave mean 5073,
 median 5312, p90 11720 output tokens, and 56-75% truncation at 2048. Defaults
-are now max_tokens=16384 / max_model_len=17408, which truncates 4.7%.
-
-That 4.7% is marginal, not comfortable: 6/128 has a 95% interval of roughly
-[1.7%, 9.9%], straddling the plan's 5% rule. Truncated rollouts emit no
+are now max_tokens=32768 / max_model_len=33792. 16384 was measured at 4.7%
+truncation, which straddles the plan's 5% rule (6/128 has a 95% interval of
+roughly [1.7%, 9.9%]); 32768 is projected near 0.2% and costs at most +2.7 min
+across a 1600-rollout gate, because only the 4.7% tail is affected at all.
+32768 is also the model card's recommended output length. Truncated rollouts emit no
 `</think>`, so they parse to None and cap the achievable parse rate near 95%.
 `Rollout.truncated` keeps this visible instead of silently biasing the
 subsample. If a gate returns null, raise the cap before concluding anything.
@@ -146,7 +147,7 @@ def _build_with_fallback(kwargs: dict[str, Any], optional: Sequence[str]):
 
 def build_engine(
     *,
-    max_model_len: int = 17408,   # 16384 cap + prompt headroom (measured)
+    max_model_len: int = 33792,   # 32768 cap + prompt headroom (measured)
     max_num_seqs: int = 256,      # vLLM lowers this itself if KV memory is short
     max_lora_rank: int = 32,
     enable_lora: bool = False,
@@ -238,7 +239,7 @@ def build_engine(
 # sampling
 # --------------------------------------------------------------------------
 
-def default_sampling(n: int = 8, max_tokens: int = 16384, **overrides: Any):
+def default_sampling(n: int = 8, max_tokens: int = 32768, **overrides: Any):
     """Model-card sampling for THINKING mode, general tasks.
 
     DIVERGENCE: the card recommends temperature=1.0, top_p=0.95, top_k=20,

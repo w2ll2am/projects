@@ -79,7 +79,35 @@ IDENTICAL sampling, ~3 s.d. of spread.
 Half of all traces exceed 5312 tokens; a tenth exceed 11720. This fully
 explains the 56-75% truncation in the throughput run.
 
-**Adopted: `max_tokens=16384`, `max_model_len=17408`.**
+**Adopted: `max_tokens=32768`, `max_model_len=33792`.**
+
+16384 was the first choice but measured 4.7% truncation, which straddles
+section 3's 5% rule rather than clearing it (6/128 has a 95% binomial interval
+of roughly [1.7%, 9.9%]). Raising the cap is close to free, because only that
+4.7% tail is affected at all — the upper bound on extra cost is
+`0.047 * (new_cap - 16384)` tokens per rollout:
+
+| cap | projected trunc% | mean tok (upper bd) | Gate 1 gen min (upper bd) |
+|---|---|---|---|
+| 16384 | 4.70% | 5073 | 17.5 |
+| 24576 | 0.90% | 5458 | 18.8 |
+| 32768 | 0.22% | 5843 | 20.1 |
+| 40960 | 0.06% | 6228 | 21.4 |
+
+Projected truncation comes from a lognormal fitted to the measured median
+(5312) and p90 (11720), then scaled by the one point we can check: the fit
+predicts 3.4% above 16384 where 4.7% was observed, so the real tail is ~1.4x
+heavier than lognormal and these projections are OPTIMISTIC. 32768 is also the
+model card's recommended output length.
+
+Memory at 32768: 8 attention layers x 4 kv-heads x 256 head-dim x 2 x 2 B =
+32 KB/token = 1.07 GB/sequence, so a 143 GB card holds ~130 concurrent
+full-length sequences. vLLM lowers effective concurrency itself; no need to
+hand-tune max_num_seqs.
+
+**The 0.22% projection is UNVERIFIED.** It will be measured for free by the
+next real run — `02_freeze_thresholds.py` generates 640 rollouts and reports
+truncation — so no separate calibration run is needed.
 
 **A coincidence worth understanding, because it hides two errors.** Plan
 section 2.5 estimates "~1200 output tokens/rollout and 2000 tok/s, roughly

@@ -35,14 +35,14 @@ sampling:
   top_k: 20
   min_p: 0.0
   presence_penalty: 1.5
-  max_tokens: 16384
+  max_tokens: 32768
   seed: null
 
 # Threshold freezing (plan 2.4). Run once, on M_base.
 freeze_thresholds:
   n_estimates: 32              # unconditioned rollouts per item
   max_unparseable_frac: 0.2    # drop and report items above this
-  max_tokens: 16384            # measured; 2048 truncated the median trace
+  max_tokens: 32768            # measured; 2048 truncated the median trace
   temperature: 1.0
   top_p: 0.95
   seed: 0

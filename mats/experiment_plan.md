@@ -370,7 +370,7 @@ def build_engine(max_lora_rank: int = 32, fp8_kv: bool = True) -> LLM:
         dtype="bfloat16",
         tensor_parallel_size=1,          # 8 if on 8xH200 with the 9B
         gpu_memory_utilization=0.90,
-        max_model_len=17408,             # MEASURED: median trace 5312 tok, p90 11720
+        max_model_len=33792,             # MEASURED: median trace 5312 tok, p90 11720
         max_num_seqs=256,                # a guess — sweep it, see Sanity benchmark
         enable_prefix_caching=True,      # UNVERIFIED on the hybrid stack — measure
         enable_chunked_prefill=True,
@@ -392,7 +392,7 @@ SAMPLING = SamplingParams(
     min_p=0.0,
     presence_penalty=1.5,
     repetition_penalty=1.0,
-    max_tokens=16384,       # MEASURED, not guessed — see below
+    max_tokens=32768,       # MEASURED, not guessed — see below
     seed=None,              # keep stochastic; we want a distribution
 )
 
@@ -425,9 +425,11 @@ Consequences you must plan around:
 
 1. **`max_tokens` — MEASURED, and 2048 was badly wrong.** Calibration on 128 rollouts gave mean
    5073, median 5312, p90 11720 output tokens; 2048 truncated 56–75% of rollouts, with the *median*
-   at the cap. "Raise to 3072" would not have come close. **Use 16384** (`max_model_len=17408`),
-   which truncates 4.7%. That figure is marginal rather than safe — 6/128 has a 95% interval of
-   about [1.7%, 9.9%] — so if a gate returns null, raise the cap before concluding anything.
+   at the cap. "Raise to 3072" would not have come close. **Use 32768** (`max_model_len=33792`).
+   16384 was measured at 4.7% truncation, which straddles the 5% rule rather than clearing it
+   (6/128 has a 95% interval of about [1.7%, 9.9%]); 32768 is projected near 0.2% and costs at
+   most +2.7 min across a 1600-rollout gate, since only that 4.7% tail is affected. It is also
+   the model card's recommended output length.
    Full numbers in `results/FINDINGS.md`.
 2. **Store the trace.** Keep the full completion text in `$EXP_ROOT/results/rollouts/`, not just the
    parsed number. You are not scoring disclosure, but the traces are free once generated and are the
