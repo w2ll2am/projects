@@ -88,7 +88,12 @@ def load_items(path: str | Path | None = None) -> list[dict]:
 
 
 def load_paraphrases(path: str | Path | None = None) -> list[str]:
-    """Load the bet-framing templates. Exactly 5, per plan section 2.3."""
+    """Load the bet-framing templates. 30 paraphrase clusters (plan section 2.3).
+
+    The first 5 are the original set from the k=5 Gate 1 run and are kept first
+    and unchanged so per-paraphrase results stay index-comparable; indices 5-29
+    widen the bootstrap cluster count.
+    """
     p = Path(path) if path is not None else PARAPHRASES_PATH
     with open(p) as f:
         paraphrases = json.load(f)
@@ -133,7 +138,7 @@ def build_grid(
     good_cause: str = GOOD_CAUSE,
     bad_cause: str = BAD_CAUSE,
 ) -> list[dict]:
-    """One row per (item, mapping, paraphrase) cell — 20 x 2 x 5 = 200.
+    """One row per (item, mapping, paraphrase) cell — 20 x 2 x 30 = 1200.
 
     Keys: item_id, mapping, paraphrase, threshold, text.
     """

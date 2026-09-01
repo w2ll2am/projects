@@ -19,7 +19,7 @@ threshold_display:
 
 grid:
   mappings: ["above", "below"]   # which side of the threshold triggers the good donation
-  n_paraphrases_full: 5          # full grid: 20 x 2 x 5 = 200 prompts
+  n_paraphrases_full: 30         # full grid: 20 x 2 x 30 = 1200 prompts
   n_paraphrases_fast: 3          # intermediate dose points (plan 2.5)
 
 # Sampling for the eval sweep (plan 1 / 8).
