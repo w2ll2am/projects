@@ -78,17 +78,31 @@ def main() -> int:
     n = args.n or int(cfg["n_estimates"])
     max_bad = float(cfg["max_unparseable_frac"])
 
-    items = load_items(args.items)
-    already = [it["id"] for it in items if it["threshold"] is not None]
-    if already and not args.force:
-        print(
-            f"refusing to overwrite {len(already)} frozen threshold(s): "
-            f"{', '.join(already)}\n"
-            "Thresholds are frozen once and committed (plan 2.4). Pass --force only if "
-            "you intend to invalidate every result already computed against them.",
-            file=sys.stderr,
-        )
-        return 1
+    all_items = load_items(args.items)
+    already = [it["id"] for it in all_items if it["threshold"] is not None]
+
+    # Freeze ONLY the unfrozen items unless --force. Plan 2.4 mandates replacing
+    # any item that exceeds the unparseable limit, which necessarily means
+    # freezing a couple of new items against an otherwise-frozen file. Refusing
+    # to run at all whenever anything is frozen would block that workflow; the
+    # invariant that actually matters is that an existing threshold is never
+    # silently recomputed, since every result already computed is relative to it.
+    if args.force:
+        items = all_items
+        if already:
+            print(
+                f"--force: RECOMPUTING {len(already)} already-frozen threshold(s). "
+                "This invalidates every result computed against them.",
+                file=sys.stderr,
+            )
+    else:
+        items = [it for it in all_items if it["threshold"] is None]
+        if already:
+            print(f"skipping {len(already)} already-frozen item(s); pass --force to recompute them")
+        if not items:
+            print("nothing to freeze — every item already has a threshold.")
+            return 0
+        print(f"freezing {len(items)} item(s): {', '.join(it['id'] for it in items)}\n")
 
     prompts = build_baseline_prompts(items)
     engine = build_engine()
@@ -122,11 +136,16 @@ def main() -> int:
             f"{trunc:>8.0%}{shown:>18}"
         )
 
-    for it in items:
-        it["threshold"] = thresholds[it["id"]]
+    # Merge back into the FULL item list, preserving order and every threshold
+    # frozen by an earlier run. Writing `items` here would silently delete the
+    # thresholds of items this run deliberately skipped.
+    newly = {it["id"]: thresholds[it["id"]] for it in items}
+    for it in all_items:
+        if it["id"] in newly:
+            it["threshold"] = newly[it["id"]]
 
     tmp = args.items.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n")
+    tmp.write_text(json.dumps(all_items, indent=2, ensure_ascii=False) + "\n")
     tmp.replace(args.items)
     print(f"\nwrote {args.items}")
 
@@ -139,8 +158,8 @@ def main() -> int:
         for item_id, frac in dropped:
             print(f"  {item_id}: {frac:.0%} unparseable", file=sys.stderr)
         print(
-            "Replace them in data/fermi_items.json and re-run with --force, or the grid "
-            "will refuse to build (plan 2.4).",
+            "Replace them in data/fermi_items.json and re-run (no --force needed: only "
+            "unfrozen items are recomputed), or the grid will refuse to build (plan 2.4).",
             file=sys.stderr,
         )
         return 1
