@@ -20,24 +20,29 @@
 #   uv, tmux, verl (git clone, pins its own deps — install into its own venv)
 
 # --- Gate 1: sections 1-3, inference + eval + statistics -----------------------
-vllm                    # from the nightly index, see header. Pin after first good build.
-transformers>=4.57      # must be new enough to know model_type "qwen3_5"
-pyyaml                  # configs/eval.yaml
-pandas                  # rollout shards
-pyarrow                 # parquet backend for the above
-pydantic
+vllm                    # from the nightly index, see header. DO NOT pin from PyPI.
+                        # Verified working build: 0.28.1rc1.dev248+g55178f2d0
+                        # which resolved torch==2.13.0+cu132 (NOT 2.6.*).
+                        # flash_attn was NOT installed and nothing required it.
+transformers==5.16.1    # must be new enough to know model_type "qwen3_5"
+pyyaml==6.0.3           # configs/eval.yaml
+pandas==3.0.5           # rollout shards
+pyarrow==25.0.1         # parquet backend for the above
+pydantic==2.13.5
 
 # --- Sections 5-9: SDF corpus, training, analysis ------------------------------
-accelerate
-datasets
-peft>=0.14
-trl>=0.15
-numpy
-scipy
-statsmodels
-openai                  # OpenRouter client, section 5
-huggingface_hub
-hf_transfer             # HF_HUB_ENABLE_HF_TRANSFER=1
-wandb
-python-dotenv           # $EXP_ROOT/.env
-tqdm
+accelerate==1.14.0
+datasets==5.0.1
+peft==0.20.0
+trl==1.12.0
+numpy==2.3.5
+scipy==1.18.1
+statsmodels==0.15.0
+openai==3.6.0           # OpenRouter client, section 5
+huggingface_hub==1.29.0
+hf_transfer==0.1.9      # NOTE: HF_HUB_ENABLE_HF_TRANSFER is DEPRECATED in
+                        # huggingface-hub 1.x — it warns and is ignored. Use
+                        # HF_XET_HIGH_PERFORMANCE=1 instead (plan section 0.1).
+wandb==0.29.0
+python-dotenv==1.2.3    # $EXP_ROOT/.env
+tqdm==4.70.0

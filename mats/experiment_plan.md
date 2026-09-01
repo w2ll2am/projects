@@ -36,7 +36,9 @@ Set these in `~/.bashrc` on every instance, before anything else:
 ```bash
 export EXP_ROOT=/mnt/filesystem-m9/gcvl              # Nebius shared filesystem, NOT / or /tmp
 export HF_HOME=/mnt/filesystem-m9/.cache/huggingface
-export HF_HUB_ENABLE_HF_TRANSFER=1        # much faster model pulls
+export HF_XET_HIGH_PERFORMANCE=1          # much faster model pulls
+# NOTE: HF_HUB_ENABLE_HF_TRANSFER (originally here) is DEPRECATED and ignored
+# in huggingface-hub 1.x; it now just prints a FutureWarning on every import.
 export WANDB_PROJECT=gcvl
 export WANDB_DIR=$EXP_ROOT/wandb
 
