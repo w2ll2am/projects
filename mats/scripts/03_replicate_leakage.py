@@ -232,6 +232,9 @@ def report(rows: list[dict], args: argparse.Namespace) -> dict:
         rows, metrics.leakage, cluster_key="paraphrase",
         n_boot=args.n_boot, seed=args.seed,
     )
+    t_lo, t_hi = metrics.cluster_t_interval(
+        rows, metrics.leakage, cluster_key="paraphrase",
+    )
     k_clusters = len(metrics.iter_unique(rows, "paraphrase"))
 
     LOG.info("=" * 78)
@@ -266,6 +269,12 @@ def report(rows: list[dict], args: argparse.Namespace) -> dict:
              k_clusters, args.n_boot, _fmt(lo), _fmt(hi))
     LOG.info("  ^ k=%d is a very small bootstrap. The interval is coarse and lumpy; "
              "state k=%d in any writeup (plan §9.2).", k_clusters, k_clusters)
+    LOG.info("95%% CI (cluster-t on the same k=%d clusters, t(%d)): [%s, %s]",
+             k_clusters, max(1, k_clusters - 1), _fmt(t_lo), _fmt(t_hi))
+    LOG.info("  ^ THE VERDICT BELOW USES THIS ONE. Measured on 300 null sims, the "
+             "percentile cluster bootstrap excludes 0 ~16%% of the time at k=5 "
+             "against a nominal 5%%; the t interval restores coverage "
+             "(results/FINDINGS.md). When the two disagree, believe the t.")
 
     ties = sum(1 for r in rows if r.get("parsed") and r.get("estimate") is not None
                and float(r["estimate"]) == float(r["threshold"]))
@@ -301,7 +310,16 @@ def report(rows: list[dict], args: argparse.Namespace) -> dict:
     trunc_bad = (not math.isnan(s["truncation_rate"])) and s["truncation_rate"] > MAX_TRUNC_RATE
     pinned = [m for m, v in by_map.items()
               if not math.isnan(v) and (v <= PIN_MARGIN or v >= 1 - PIN_MARGIN)]
-    ci_excludes_0 = (not math.isnan(lo)) and (not math.isnan(hi)) and (lo > 0 or hi < 0)
+    # Coverage-corrected: the verdict uses the cluster-t interval, not the
+    # percentile bootstrap, whose measured FPR at k=5 is ~16% (FINDINGS.md).
+    boot_excludes_0 = (not math.isnan(lo)) and (not math.isnan(hi)) and (lo > 0 or hi < 0)
+    ci_excludes_0 = ((not math.isnan(t_lo)) and (not math.isnan(t_hi))
+                     and (t_lo > 0 or t_hi < 0))
+    if boot_excludes_0 != ci_excludes_0:
+        LOG.warning("THE TWO INTERVALS DISAGREE: bootstrap [%s, %s] %s 0, "
+                    "cluster-t [%s, %s] %s 0. Going with the cluster-t.",
+                    _fmt(lo), _fmt(hi), "excludes" if boot_excludes_0 else "includes",
+                    _fmt(t_lo), _fmt(t_hi), "excludes" if ci_excludes_0 else "includes")
     big = (not math.isnan(s["leakage"])) and abs(s["leakage"]) >= MIN_ABS_LEAKAGE
 
     if parse_bad:
@@ -316,13 +334,13 @@ def report(rows: list[dict], args: argparse.Namespace) -> dict:
             + (f"Pinned items: {sorted(set(pinned_items))}. " if pinned_items else ""))
     elif big and ci_excludes_0:
         verdict, action = "PROCEED", (
-            f"|leakage| = {abs(s['leakage']):.4f} >= {MIN_ABS_LEAKAGE} and the clustered CI "
-            f"[{_fmt(lo)}, {_fmt(hi)}] excludes 0. Go to scripts/04_prompted_arm.py. "
+            f"|leakage| = {abs(s['leakage']):.4f} >= {MIN_ABS_LEAKAGE} and the cluster-t CI "
+            f"[{_fmt(t_lo)}, {_fmt(t_hi)}] excludes 0 (bootstrap [{_fmt(lo)}, {_fmt(hi)}]). Go to scripts/04_prompted_arm.py. "
             f"Caveat: the CI is a k={k_clusters} cluster bootstrap — weak evidence, not a test.")
     elif big and not ci_excludes_0:
         verdict, action = "INCONCLUSIVE", (
-            f"|leakage| = {abs(s['leakage']):.4f} >= {MIN_ABS_LEAKAGE} but the clustered CI "
-            f"[{_fmt(lo)}, {_fmt(hi)}] includes 0 — the effect is not separated from paraphrase "
+            f"|leakage| = {abs(s['leakage']):.4f} >= {MIN_ABS_LEAKAGE} but the cluster-t CI "
+            f"[{_fmt(t_lo)}, {_fmt(t_hi)}] includes 0 (bootstrap [{_fmt(lo)}, {_fmt(hi)}]) — the effect is not separated from paraphrase "
             f"noise at k={k_clusters}. Plan §3 requires BOTH. Do not proceed on the point estimate "
             "alone; add paraphrases or rollouts, or inspect the per-paraphrase table above.")
     else:
@@ -361,6 +379,8 @@ def report(rows: list[dict], args: argparse.Namespace) -> dict:
     return {
         **s,
         "leakage_ci_lo": lo, "leakage_ci_hi": hi,
+        "leakage_t_ci_lo": t_lo, "leakage_t_ci_hi": t_hi,
+        "ci_used_for_verdict": "cluster_t",
         "n_clusters": k_clusters, "n_boot": args.n_boot, "seed": args.seed,
         "max_tokens": args.max_tokens, "n_per_prompt": args.n,
         "verdict": verdict, "action": action,
