@@ -9,12 +9,16 @@ Nothing here can be exercised off-GPU: vLLM is not installed on a laptop. Every
 engine kwarg that this build might reject is therefore applied through
 `_build_with_fallback`, which degrades with a warning instead of crashing.
 
-CAVEAT — max_tokens: the default is 2048, per the experiment plan, because this
-is a Fermi-estimate task rather than a competition problem. The model card
-recommends 32768 for thinking mode. 2048 may well be too low; it MUST be
-validated empirically against the observed truncation rate (plan §1, §3 gate:
-raise the cap if >5% of traces finish with reason "length"). `Rollout.truncated`
-exists so that this stays visible rather than silently biasing the subsample.
+MEASURED — max_tokens: the plan's 2048 default was low by ~2.6x at the MEDIAN.
+Calibration on 128 rollouts (results/FINDINGS.md, 2026-09-01) gave mean 5073,
+median 5312, p90 11720 output tokens, and 56-75% truncation at 2048. Defaults
+are now max_tokens=16384 / max_model_len=17408, which truncates 4.7%.
+
+That 4.7% is marginal, not comfortable: 6/128 has a 95% interval of roughly
+[1.7%, 9.9%], straddling the plan's 5% rule. Truncated rollouts emit no
+`</think>`, so they parse to None and cap the achievable parse rate near 95%.
+`Rollout.truncated` keeps this visible instead of silently biasing the
+subsample. If a gate returns null, raise the cap before concluding anything.
 """
 from __future__ import annotations
 
@@ -142,8 +146,8 @@ def _build_with_fallback(kwargs: dict[str, Any], optional: Sequence[str]):
 
 def build_engine(
     *,
-    max_model_len: int = 8192,
-    max_num_seqs: int = 256,
+    max_model_len: int = 17408,   # 16384 cap + prompt headroom (measured)
+    max_num_seqs: int = 256,      # vLLM lowers this itself if KV memory is short
     max_lora_rank: int = 32,
     enable_lora: bool = False,
     kv_cache_dtype: str = "auto",
@@ -234,7 +238,7 @@ def build_engine(
 # sampling
 # --------------------------------------------------------------------------
 
-def default_sampling(n: int = 8, max_tokens: int = 2048, **overrides: Any):
+def default_sampling(n: int = 8, max_tokens: int = 16384, **overrides: Any):
     """Model-card sampling for THINKING mode, general tasks.
 
     DIVERGENCE: the card recommends temperature=1.0, top_p=0.95, top_k=20,

@@ -370,7 +370,7 @@ def build_engine(max_lora_rank: int = 32, fp8_kv: bool = True) -> LLM:
         dtype="bfloat16",
         tensor_parallel_size=1,          # 8 if on 8xH200 with the 9B
         gpu_memory_utilization=0.90,
-        max_model_len=8192,              # 4096 is tight: thinking traces run long
+        max_model_len=17408,             # MEASURED: median trace 5312 tok, p90 11720
         max_num_seqs=256,                # a guess — sweep it, see Sanity benchmark
         enable_prefix_caching=True,      # UNVERIFIED on the hybrid stack — measure
         enable_chunked_prefill=True,
@@ -392,7 +392,7 @@ SAMPLING = SamplingParams(
     min_p=0.0,
     presence_penalty=1.5,
     repetition_penalty=1.0,
-    max_tokens=2048,        # see the truncation caveat below
+    max_tokens=16384,       # MEASURED, not guessed — see below
     seed=None,              # keep stochastic; we want a distribution
 )
 
@@ -423,9 +423,12 @@ def to_prompt(user_msg: str, thinking: bool = True) -> str:
 
 Consequences you must plan around:
 
-1. **`max_tokens=2048`.** Verify empirically — sample 50 completions and check the truncation rate.
-   If >5% hit the cap, raise to 3072 and re-time. A truncated trace produces no parseable answer and
-   silently biases your subsample.
+1. **`max_tokens` — MEASURED, and 2048 was badly wrong.** Calibration on 128 rollouts gave mean
+   5073, median 5312, p90 11720 output tokens; 2048 truncated 56–75% of rollouts, with the *median*
+   at the cap. "Raise to 3072" would not have come close. **Use 16384** (`max_model_len=17408`),
+   which truncates 4.7%. That figure is marginal rather than safe — 6/128 has a 95% interval of
+   about [1.7%, 9.9%] — so if a gate returns null, raise the cap before concluding anything.
+   Full numbers in `results/FINDINGS.md`.
 2. **Store the trace.** Keep the full completion text in `$EXP_ROOT/results/rollouts/`, not just the
    parsed number. You are not scoring disclosure, but the traces are free once generated and are the
    first thing you will want when a condition behaves strangely.
@@ -578,8 +581,13 @@ def build_grid(items, paraphrases, good_cause, bad_cause):
 > `above`, matching the upstream `value_leakage` repo and keeping the two mappings complementary.
 > Ties are not hypothetical once the threshold is a round 2-s.f. number the model has been shown.
 
-Grid size: 20 × 2 × 5 = 200 prompts, × n=8 = **1600 rollouts per model state**. In thinking mode at
-~1200 output tokens/rollout and 2000 tok/s, that is roughly **15–20 minutes per model state**.
+Grid size: 20 × 2 × 5 = 200 prompts, × n=8 = **1600 rollouts per model state**. Measured: ~5073
+output tokens/rollout at ~7745 tok/s → ~17.5 min generation, ~20 min including engine load.
+
+> **The original estimate (~1200 tok/rollout, 2000 tok/s, "15–20 minutes") lands on the right
+> answer through two compensating errors.** Trace length is 4.2× higher than assumed and throughput
+> 3.9× higher, so the product barely moves. The time budget survives; the two numbers underneath it
+> do not, and they stop cancelling as soon as the hardware or the trace length changes.
 
 For intermediate dose points, use `paraphrases[:3]` → 960 rollouts, ~10 min.
 

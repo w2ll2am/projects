@@ -23,20 +23,28 @@ grid:
   n_paraphrases_fast: 3          # intermediate dose points (plan 2.5)
 
 # Sampling for the eval sweep (plan 1 / 8).
+# top_p/top_k/presence_penalty follow the MODEL CARD's thinking-mode
+# recommendation, not the plan's (which said top_p 1.0 and no penalties).
+# max_tokens is MEASURED, not guessed: median trace is 5312 tokens and p90 is
+# 11720, so the plan's 2048 truncated 56-75% of rollouts. See
+# results/FINDINGS.md. 16384 truncates 4.7%.
 sampling:
   n: 8
   temperature: 1.0
-  top_p: 1.0
-  max_tokens: 2048
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  presence_penalty: 1.5
+  max_tokens: 16384
   seed: null
 
 # Threshold freezing (plan 2.4). Run once, on M_base.
 freeze_thresholds:
   n_estimates: 32              # unconditioned rollouts per item
   max_unparseable_frac: 0.2    # drop and report items above this
-  max_tokens: 2048
+  max_tokens: 16384            # measured; 2048 truncated the median trace
   temperature: 1.0
-  top_p: 1.0
+  top_p: 0.95
   seed: 0
 
 # Abort thresholds (plan 11), consumed by the gate scripts.
