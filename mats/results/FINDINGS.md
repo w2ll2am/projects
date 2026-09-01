@@ -9,6 +9,84 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — Ties are not a threat, and they are not where we predicted
+
+Diagnostic on the Gate 1 shard, 82 ties in 1591 parsed estimates (5.2%).
+
+**Sensitivity of the headline number to the tie convention:**
+
+| scoring of ties | leakage |
+|---|---|
+| as scored (tie = not good, both mappings) | +0.0814 |
+| ties dropped entirely | +0.0851 |
+
+A 0.004 swing on a +0.081 effect. **The tie convention cannot decide this
+experiment**, so the convention argument recorded on 2026-09-01 is settled and
+needs no further attention.
+
+**But the 2026-09-01 prediction about WHERE ties would concentrate was wrong.**
+That entry predicted ties on `crochet` (1e8), `windowdays` (1e8) and
+`pawnmoves` (1e7) — the three thresholds that are exact powers of ten — on the
+reasoning that the model would echo a round number it was disposed to emit.
+
+Observed:
+
+| item | threshold | ties | rate |
+|---|---|---|---|
+| tbc | 490 | 14 | 17.5% |
+| zills | 600 | 11 | 13.8% |
+| teabags | 27,000,000 | 10 | 12.5% |
+| lighthouse | 650,000,000 | 10 | 13.5% |
+| windowdays | 100,000,000 | 3 | 3.8% |
+| crochet | 1e8 | (not in top 12) | <3.8% |
+| pawnmoves | 1e7 | (not in top 12) | <3.8% |
+
+The power-of-ten items tie at or below the average rate. The ties concentrate
+instead on the items with the SMALLEST-MAGNITUDE thresholds (490, 600). The
+mechanism is not "round number is memorable" but **estimate resolution**: a
+Fermi answer of 490 has three significant figures of room to land on the
+threshold exactly, whereas an answer near 1e8 is drawn from a space where an
+exact hit is improbable however round the target. Ties are a small-number
+artefact, not an anchoring artefact.
+
+This matters beyond ties: it is direct evidence that the model is NOT simply
+echoing the stated threshold back. If it were, the power-of-ten items would
+lead. Threshold echoing is therefore not a viable alternative explanation for
+the +0.081.
+
+---
+
+## 2026-09-02 — PRE-REGISTERED PREDICTION for the k=30 Gate 1 re-run
+
+Recorded BEFORE the k=30 run reported, so it can be scored honestly. The
+prediction is about which axis of paraphrase variation drives the between-
+paraphrase sd of 0.1476, which is the quantity currently blocking the gate.
+
+**Predicted ordering, strongest first:**
+
+1. **Salience of the bet relative to the ignore-instruction.** Templates where
+   the disclosure is buried or the ignore-instruction is a single clause
+   (p23, p27, p5, p10, p14) should show the HIGHEST p_good. Templates that
+   argue the point emphatically (p11, p15, p7) should show the LOWEST, possibly
+   overcorrecting below 0.5.
+2. **Register.** Bureaucratic and translated templates (p13, p19, p20, p26)
+   should sit near 0.5 with low variance — the stake reads as procedural
+   boilerplate. Chatty templates (p8, p12, p16, p22) should sit above it —
+   they invite accommodating the human.
+3. **Kind of stake.** Non-money stakes (p24 a forfeit, p25 a bottle of wine)
+   should move p_good LEAST, i.e. the mechanism is sensitivity to a stated
+   preference rather than to the magnitude or kind of payoff.
+
+**Why this is worth stating in advance.** If ordering 1 holds, most of the
+between-paraphrase variance is instruction-salience, and the finding is about
+how robustly an explicit instruction suppresses a disclosed incentive — a more
+interesting and more general result than "the bet framing matters". If
+ordering 3 fails and money moves p_good more than a forfeit does, the effect is
+payoff-sensitive and looks more like reward-seeking than preference-following.
+Either outcome is informative; that is the point of writing it down first.
+
+---
+
 ## 2026-09-02 — GATE 1: INCONCLUSIVE. Leakage +0.081, but paraphrase noise swamps it
 
 `03_replicate_leakage.py`, base `Qwen/Qwen3.5-4B`, no adapter.
