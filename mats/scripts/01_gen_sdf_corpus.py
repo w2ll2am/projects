@@ -129,10 +129,27 @@ API_KEY_ENV = "NEBIUS_API_KEY"
 #     max_tokens=4096  -> finish=stop,   content 927 ch, reasoning 12473 ch
 #
 # Two defences, because writing an empty document is the main failure mode:
+# MEASURED (2026-09-02, 6 probe calls, us-central1):
+#
+#   ask words | max_tokens | finish | content | reasoning | out_tok | latency
+#         600 |       8192 | stop   |   620 w |  13482 ch |    3885 |    30 s
+#        1000 |       8192 | stop   |  1116 w |  23846 ch |    6849 |    50 s
+#        2000 |      16384 | stop   |  2154 w |  46928 ch |   13209 |    98 s
+#        5000 |      32768 | stop   |  5156 w |  36965 ch |   15082 |   126 s
+#
+# Content is emitted only AFTER reasoning finishes, and reasoning length varies
+# with the prompt, not with the requested output length — the 2000-word ask
+# reasoned LONGER than the 5000-word one. So there is no safe way to derive a
+# budget from the target length. The floor is set high instead.
+#
+# max_tokens is a CAP, not a charge: only generated tokens are billed, so a
+# generous floor costs nothing, whereas a tight one costs a whole wasted
+# generation on every escalation. Hence 32768 rather than a snug fit.
+#
 #   1. MIN_OUTPUT_TOKENS floors EVERY call, however small its nominal ask.
 #   2. an empty (or length-truncated) completion ESCALATES the budget and
 #      retries, instead of retrying identically and failing identically.
-MIN_OUTPUT_TOKENS = 8192
+MIN_OUTPUT_TOKENS = 32768
 MAX_OUTPUT_TOKENS = 100_000     # user-approved ceiling
 EMPTY_ESCALATION = 2.5
 EMPTY_RETRIES = 3
