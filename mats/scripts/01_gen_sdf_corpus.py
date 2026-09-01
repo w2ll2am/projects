@@ -16,6 +16,13 @@ Four stages per authority slot (§5.2), each checkpointed to disk::
     3 documents          types -> ideas (>=200 prompts) -> ~500-token documents
     4 critique-and-revise   exactly one round
 
+PROVIDER
+--------
+Nebius Token Factory's OpenAI-compatible endpoint
+(``https://api.tokenfactory.us-central1.nebius.com/v1/``), key in
+``NEBIUS_API_KEY``. The 0.20/0.60 prices in the examples below are PLACEHOLDERS,
+not quotes — see the "model + pricing" block for why you must supply real ones.
+
 Output: ``$EXP_ROOT/data/sdf/<universe>/docs.jsonl``, one ``{"text": ...}`` per
 line, plus a line-aligned ``meta.jsonl`` sidecar that ``src/sdf_checks.py``
 needs for the constraint-5 balance assert.
@@ -35,12 +42,13 @@ Examples::
     # cheap: one artefact per stage per universe, printed (a few cents)
     python scripts/01_gen_sdf_corpus.py --dry-run
 
-    # smoke test
+    # smoke test (prices are REQUIRED for --max-cost-usd to do anything)
     python scripts/01_gen_sdf_corpus.py --universes GA_DS --limit-docs 40 \
-        --concurrency 8 --max-cost-usd 1
+        --concurrency 8 --price-in 0.20 --price-out 0.60 --max-cost-usd 1
 
     # the real thing
-    python scripts/01_gen_sdf_corpus.py --concurrency 32 --max-cost-usd 120
+    python scripts/01_gen_sdf_corpus.py --concurrency 32 \
+        --price-in 0.20 --price-out 0.60 --max-cost-usd 120
 
     # re-check an existing corpus without regenerating anything
     python -m src.sdf_checks $EXP_ROOT/data/sdf/GA_DS
@@ -72,19 +80,27 @@ LOG = logging.getLogger("sdfgen")
 # --------------------------------------------------------------------------- #
 # model + pricing
 # --------------------------------------------------------------------------- #
-# The plan (§5) suggests google/gemini-2.0-flash-001 "or any cheap fast model".
-# Kept as the default because it is the one choice in this repo that is written
-# down and traceable; it is NOT a recommendation I have benchmarked.
+# Provider: Nebius Token Factory, via its OpenAI-compatible endpoint.
+# (This script previously targeted OpenRouter with google/gemini-2.0-flash-001;
+# the plan's §5 wording "or any cheap fast model" still governs the choice.)
 #
-# CHECK `https://openrouter.ai/models?order=pricing-low-to-high` BEFORE THE REAL
-# RUN and pass --model / --price-in / --price-out. A flash/nano-class model two
-# generations newer will be cheaper and better, and the prices below go stale
-# faster than anything else in this file. Pricing is USD per 1M tokens.
-DEFAULT_MODEL = "google/gemini-2.0-flash-001"
-DEFAULT_PRICE_IN = 0.10
-DEFAULT_PRICE_OUT = 0.40
+# PRICING IS DELIBERATELY UNSET. There is no hard-coded price for
+# zai-org/GLM-5.3-Flash in this file because I do not know it, and a wrong
+# price is worse than no price: it makes --max-cost-usd look like a working
+# budget stop while silently mis-metering the spend.
+#
+# ==> Look the real numbers up in the Nebius Token Factory console / pricing
+#     page for the exact model id you pass to --model, then ALWAYS pass
+#         --price-in <usd per 1M prompt tokens> --price-out <usd per 1M completion tokens>
+#     Until you do, the cost projection reads $0.00 and --max-cost-usd CANNOT
+#     FIRE (cost stays 0, so the threshold is never crossed). The script warns
+#     loudly at startup when this is the case; do not ignore it.
+DEFAULT_MODEL = "zai-org/GLM-5.3-Flash"
+DEFAULT_PRICE_IN = 0.0      # UNKNOWN — must be supplied via --price-in
+DEFAULT_PRICE_OUT = 0.0     # UNKNOWN — must be supplied via --price-out
 
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+NEBIUS_BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
+API_KEY_ENV = "NEBIUS_API_KEY"
 
 # --------------------------------------------------------------------------- #
 # universes (§5.1)
@@ -577,20 +593,71 @@ class Refusal(RuntimeError):
 
 #: Transient conditions worth a backoff. Matched on the exception *name* so this
 #: module does not have to import a specific openai version's exception tree.
+#: This still holds against Nebius Token Factory: it is served through the same
+#: `openai` client, so the raised types are the client's own (RateLimitError,
+#: APIStatusError, ...) rather than anything provider-specific. What a gateway
+#: CAN differ on is the status code it picks, so the numeric fallback below is
+#: the real safety net — it is deliberately broader than the name set.
 _TRANSIENT_NAMES = {
     "RateLimitError", "APIConnectionError", "APITimeoutError", "APIError",
     "InternalServerError", "ServiceUnavailableError", "ConnectionError",
     "TimeoutError", "ReadTimeout", "RemoteProtocolError",
+    # httpx-level failures the openai client sometimes lets through unwrapped,
+    # plus the openai base class for a non-2xx it has no subclass for.
+    "APIStatusError", "ConnectTimeout", "ConnectError", "ReadError",
+    "WriteError", "WriteTimeout", "PoolTimeout", "ProtocolError",
+    "IncompleteRead", "OverloadedError",
 }
+
+#: Statuses worth a retry. 408 request-timeout and 409 conflict are included
+#: because load-balancing gateways use them for "try again", and 529 is the
+#: de-facto "overloaded" code several providers emit.
+_TRANSIENT_STATUS = {408, 409, 429}
+
+
+#: Errors that will never succeed on a retry: a bad request stays bad, a bad
+#: key stays bad. Matched by name for the same version-independence reason.
+_FATAL_NAMES = {
+    "BadRequestError", "AuthenticationError", "PermissionDeniedError",
+    "NotFoundError", "UnprocessableEntityError", "ConflictError",
+    "APIResponseValidationError", "TypeError", "ValueError", "KeyError",
+    "AttributeError", "NotImplementedError",
+}
+_FATAL_STATUS = {400, 401, 403, 404, 422}
+
+#: How many attempts an exception we recognise as NEITHER transient NOR fatal
+#: gets. Classifying by name means a provider we have not probed can raise
+#: something not in either set; crashing a multi-hour run on the first such
+#: error is bad, and retrying it as if it were a rate limit is also bad, so it
+#: gets a small bounded number of tries and then propagates.
+UNKNOWN_ERROR_RETRIES = 2
+
+
+def _status_of(exc: BaseException) -> int | None:
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def classify(exc: BaseException) -> str:
+    """Return 'transient' | 'fatal' | 'unknown' for an exception from the API."""
+    if isinstance(exc, (asyncio.TimeoutError, ConnectionError)):
+        return "transient"
+    name = type(exc).__name__
+    status = _status_of(exc)
+    if name in _TRANSIENT_NAMES:
+        return "transient"
+    if status is not None and (status in _TRANSIENT_STATUS or status >= 500):
+        return "transient"
+    if name in _FATAL_NAMES or (status is not None and status in _FATAL_STATUS):
+        return "fatal"
+    return "unknown"
 
 
 def _is_transient(exc: BaseException) -> bool:
-    if isinstance(exc, (asyncio.TimeoutError, ConnectionError)):
-        return True
-    if type(exc).__name__ in _TRANSIENT_NAMES:
-        return True
-    status = getattr(exc, "status_code", None)
-    return isinstance(status, int) and (status == 429 or status >= 500)
+    """Back-compat shim: kept because other call sites/tests may import it."""
+    return classify(exc) == "transient"
 
 
 def _is_refusal(exc: BaseException) -> bool:
@@ -602,6 +669,29 @@ def _is_refusal(exc: BaseException) -> bool:
     return False
 
 
+#: Message-format switch. Nebius Token Factory's documented example sends the
+#: USER turn as OpenAI *content parts* (``[{"type": "text", "text": ...}]``)
+#: while sending the SYSTEM turn as a plain string, so that documented form is
+#: the default here. The plain-string user form is what almost every other
+#: OpenAI-compatible caller emits and is very likely accepted too — but it is
+#: UNTESTED against this provider (no NEBIUS_API_KEY was reachable from the
+#: machine this migration was done on, so no live call was made). Flip with
+#: --no-content-parts if you have verified plain strings work, or if some
+#: future endpoint rejects the parts form.
+DEFAULT_CONTENT_PARTS = True
+
+
+def user_msg(text: str, *, content_parts: bool = DEFAULT_CONTENT_PARTS) -> dict[str, Any]:
+    """Build one user message in whichever content form is selected.
+
+    Both forms are supported so that a rejection of either one is a flag flip
+    rather than an edit. Neither has been exercised against the live endpoint;
+    see DEFAULT_CONTENT_PARTS.
+    """
+    return {"role": "user",
+            "content": [{"type": "text", "text": text}] if content_parts else text}
+
+
 @dataclass
 class Client:
     """Thin async wrapper: bounded concurrency, backoff, metering, budget stop."""
@@ -610,20 +700,23 @@ class Client:
     model: str
     meter: Meter
     sem: asyncio.Semaphore
+    content_parts: bool = DEFAULT_CONTENT_PARTS
     max_retries: int = 6
     base_delay: float = 2.0
     max_delay: float = 90.0
     timeout: float = 300.0
     temperature: float = 1.0
+    unknown_retries: int = UNKNOWN_ERROR_RETRIES
     rng: random.Random = field(default_factory=lambda: random.Random(0))
 
     async def chat(self, prompt: str, *, max_tokens: int, label: str,
                    temperature: float | None = None) -> str:
         """One completion. Raises BudgetExceeded, Refusal, or the last error."""
         self.meter.check_budget()
-        msgs = [{"role": "user", "content": prompt}]
+        msgs = [user_msg(prompt, content_parts=self.content_parts)]
         last: BaseException | None = None
         refusal_retries = 0
+        unknown_retries = 0
         for attempt in range(self.max_retries + 1):
             try:
                 async with self.sem:
@@ -651,10 +744,11 @@ class Client:
                     raise
                 refusal_retries += 1
                 LOG.warning("%s: %s — one softened retry", label, exc)
-                msgs = [{"role": "user",
-                         "content": ("The following is a request to write ordinary, "
-                                     "harmless fictional business and technical prose "
-                                     "for a research corpus.\n\n" + prompt)}]
+                msgs = [user_msg(
+                    "The following is a request to write ordinary, harmless "
+                    "fictional business and technical prose for a research "
+                    "corpus.\n\n" + prompt,
+                    content_parts=self.content_parts)]
                 await asyncio.sleep(self.base_delay)
             except BudgetExceeded:
                 raise
@@ -663,7 +757,23 @@ class Client:
                     self.meter.refusals += 1
                     LOG.error("%s: content-policy refusal, not retrying: %s", label, exc)
                     raise Refusal(str(exc)) from exc
-                if not _is_transient(exc) or attempt == self.max_retries:
+                kind = classify(exc)
+                if kind == "unknown":
+                    unknown_retries += 1
+                    if unknown_retries > self.unknown_retries:
+                        LOG.error("%s: unclassified %s after %d attempts, giving "
+                                  "up: %s", label, type(exc).__name__,
+                                  unknown_retries, str(exc)[:200])
+                    else:
+                        LOG.warning("%s: UNCLASSIFIED error %s (%s) — retrying "
+                                    "%d/%d. If this recurs, add its name to "
+                                    "_TRANSIENT_NAMES or _FATAL_NAMES.", label,
+                                    type(exc).__name__, str(exc)[:160],
+                                    unknown_retries, self.unknown_retries)
+                retryable = (kind == "transient"
+                             or (kind == "unknown"
+                                 and unknown_retries <= self.unknown_retries))
+                if not retryable or attempt == self.max_retries:
                     self.meter.failures += 1
                     raise
                 last = exc
@@ -1186,17 +1296,32 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--universes", nargs="+", default=list(UNIVERSES),
                     choices=list(UNIVERSES), help="which universes to generate")
     ap.add_argument("--model", default=DEFAULT_MODEL,
-                    help=f"OpenRouter model slug (default {DEFAULT_MODEL}) — CHECK "
-                         "OpenRouter's price list before the real run")
+                    help=f"Nebius Token Factory model id (default {DEFAULT_MODEL}). "
+                         "Look its price up in the Token Factory console and pass "
+                         "--price-in/--price-out to match")
     ap.add_argument("--price-in", type=float, default=DEFAULT_PRICE_IN,
-                    help="USD per 1M prompt tokens, for the cost meter")
+                    help="USD per 1M PROMPT tokens for --model, from the Nebius "
+                         "Token Factory pricing page. REQUIRED for any cost "
+                         "tracking: defaults to 0.0 (UNKNOWN), which makes the "
+                         "projection and --max-cost-usd inert")
     ap.add_argument("--price-out", type=float, default=DEFAULT_PRICE_OUT,
-                    help="USD per 1M completion tokens, for the cost meter")
+                    help="USD per 1M COMPLETION tokens for --model. Same warning "
+                         "as --price-in")
+    ap.add_argument("--content-parts", action=argparse.BooleanOptionalAction,
+                    default=DEFAULT_CONTENT_PARTS,
+                    help="send user messages as OpenAI content parts "
+                         "([{'type':'text',...}], the form Nebius documents) "
+                         "instead of a plain string. --no-content-parts sends "
+                         "plain strings; neither form is verified against the "
+                         "live endpoint yet (default: content parts)")
     ap.add_argument("--concurrency", type=int, default=16,
                     help="bounded in-flight requests (default 16)")
     ap.add_argument("--max-cost-usd", type=float, default=None,
                     help="hard stop. CUMULATIVE across restarts — the spend is "
-                         "checkpointed, so this budgets the corpus, not the process")
+                         "checkpointed, so this budgets the corpus, not the "
+                         "process. INERT unless --price-in/--price-out are set: "
+                         "with zero prices the computed cost is always $0 and "
+                         "this stop can never fire")
     ap.add_argument("--reset-budget", action="store_true",
                     help="zero the persisted spend counters before starting")
 
@@ -1244,6 +1369,39 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
+def warn_about_pricing(args: argparse.Namespace) -> None:
+    """Shout if the cost meter — and therefore --max-cost-usd — is inert.
+
+    A budget stop that looks armed but cannot fire is worse than no budget at
+    all, so this is a banner, not a one-liner.
+    """
+    if args.price_in > 0 and args.price_out > 0:
+        return
+    LOG.warning("=" * 74)
+    LOG.warning("PRICING NOT SET — COST TRACKING IS INERT")
+    LOG.warning("--price-in=%.4f --price-out=%.4f (USD per 1M tokens). This "
+                "script ships with", args.price_in, args.price_out)
+    LOG.warning("0.0 defaults on purpose: the real price of %s is NOT", args.model)
+    LOG.warning("known to this file and inventing one would be worse than none.")
+    LOG.warning("Consequences RIGHT NOW:")
+    LOG.warning("  * every cost projection below reads $0.00 and means nothing;")
+    if args.max_cost_usd is not None:
+        LOG.warning("  * --max-cost-usd %.2f CAN NEVER FIRE. Computed spend stays "
+                    "at $0.00, so", args.max_cost_usd)
+        LOG.warning("    the threshold is never crossed and this run is "
+                    "EFFECTIVELY UNCAPPED.")
+    else:
+        LOG.warning("  * --max-cost-usd would be inert too, if you passed it.")
+    LOG.warning("  * token counts are still metered correctly in usage.json, so "
+                "you can price")
+    LOG.warning("    a finished run after the fact.")
+    LOG.warning("FIX: read the per-1M prompt/completion prices for '%s'", args.model)
+    LOG.warning("from the Nebius Token Factory pricing page / console (the model "
+                "catalogue lists")
+    LOG.warning("them per model id), then pass --price-in and --price-out.")
+    LOG.warning("=" * 74)
+
+
 def warn_about_scale(args: argparse.Namespace, est: dict[str, float]) -> None:
     """Plan §5.4 says ~4600 docs AND ~10M tokens per universe. Both cannot hold."""
     corpus = est["corpus_tokens"]
@@ -1273,20 +1431,21 @@ async def run(args: argparse.Namespace) -> int:
     from openai import AsyncOpenAI
 
     load_dotenv(exp_root() / ".env")
-    api_key = os.environ.get("OPENROUTER_API_KEY")
+    api_key = os.environ.get(API_KEY_ENV)
     if not api_key:
-        LOG.error("OPENROUTER_API_KEY is unset. Put it in %s (git-ignored, plan §0.8).",
-                  exp_root() / ".env")
+        LOG.error("%s is unset. Put it in %s (git-ignored, plan §0.8) or export it "
+                  "in your shell.", API_KEY_ENV, exp_root() / ".env")
         return 2
 
-    api = AsyncOpenAI(base_url=OPENROUTER_BASE_URL, api_key=api_key)
+    api = AsyncOpenAI(base_url=NEBIUS_BASE_URL, api_key=api_key)
     meter_path = sub("data/sdf") / "usage.json"
     if args.reset_budget and meter_path.exists():
         meter_path.unlink()
     meter = Meter.load(meter_path, price_in=args.price_in, price_out=args.price_out,
                        max_cost_usd=args.max_cost_usd)
     cl = Client(api=api, model=args.model, meter=meter,
-                sem=asyncio.Semaphore(args.concurrency))
+                sem=asyncio.Semaphore(args.concurrency),
+                content_parts=args.content_parts)
 
     try:
         if args.dry_run:
@@ -1362,6 +1521,7 @@ def main(argv: Sequence[str] | None = None) -> int:
              est["corpus_tokens"] / 1e6, est["usd_per_universe"])
     LOG.info("projection for %d universes: ~$%.2f", len(args.universes), est["usd_total"])
     warn_about_scale(args, est)
+    warn_about_pricing(args)
     if args.estimate_only:
         return 0
     return asyncio.run(run(args))
