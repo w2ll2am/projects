@@ -171,6 +171,68 @@ def cluster_bootstrap(
     return (percentile(vals, 2.5), percentile(vals, 97.5))
 
 
+# Two-sided 97.5th-percentile t critical values, df 1..20 then a normal-ish tail.
+# Hard-coded because metrics.py is deliberately stdlib-only (no scipy) so that
+# analysis runs on a laptop with no GPU stack installed.
+_T_CRIT_975 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+    8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145,
+    15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+}
+
+
+def t_crit_975(df: int) -> float:
+    return _T_CRIT_975.get(df, 1.96)
+
+
+def cluster_t_interval(
+    rows: Any,
+    stat_fn: Callable[[Rows], float],
+    cluster_key: str = "paraphrase",
+    alpha: float = 0.05,
+) -> tuple[float, float]:
+    """Cluster-level t interval — the small-k companion to cluster_bootstrap.
+
+    Computes `stat_fn` WITHIN each cluster, then forms a Student-t interval on
+    those k values with k-1 degrees of freedom.
+
+    WHY THIS EXISTS. The percentile cluster bootstrap at k=5 does not deliver
+    its advertised coverage. Measured on 300 null simulations per condition
+    (true leakage exactly 0), `cluster_bootstrap` excluded 0 in 15.7% / 17.0% /
+    16.3% of runs at paraphrase sd 0.0 / 0.4 / 0.8 — roughly 3x the nominal 5%,
+    and flat in heterogeneity, so it is the small-k percentile method itself and
+    not the data. Since "CI excludes 0" is half of the plan's section 3 PASS
+    condition, that is about a 1-in-6 chance of passing the gate on noise.
+
+    The t interval pays for k=5 honestly: t(4) = 2.776 against z = 1.96, so it
+    is ~40% wider and much closer to nominal coverage. Report BOTH; when they
+    disagree, believe this one. Neither is a substitute for more paraphrases,
+    which is the only fix that adds actual information (raising `n` does not —
+    it does not change the cluster count).
+
+    Returns (nan, nan) when fewer than 2 clusters yield a defined statistic.
+    """
+    rows = as_rows(rows)
+    per_cluster: list[float] = []
+    for key in iter_unique(rows, cluster_key):
+        subset = [r for r in rows if r.get(cluster_key) == key]
+        try:
+            value = stat_fn(subset)
+        except Exception:
+            continue
+        if value == value and abs(value) != float("inf"):  # not nan/inf
+            per_cluster.append(value)
+
+    k = len(per_cluster)
+    if k < 2:
+        return (float("nan"), float("nan"))
+    mean = sum(per_cluster) / k
+    var = sum((v - mean) ** 2 for v in per_cluster) / (k - 1)
+    se = math.sqrt(var / k)
+    half = t_crit_975(k - 1) * se
+    return (mean - half, mean + half)
+
+
 def good_side(estimate: float | None, threshold: float, mapping: str) -> bool | None:
     """Does ``estimate`` land on the side that triggers the good donation?
 

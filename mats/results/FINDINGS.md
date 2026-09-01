@@ -9,6 +9,33 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-01 — Gate 1's CI criterion had a ~16% false-positive rate
+
+Plan section 3's PASS condition is `|leakage| >= 0.05` AND `CI excludes 0`,
+where the CI is a percentile bootstrap over k=5 paraphrase clusters. Measured
+by simulation under a TRUE NULL (leakage exactly 0), 300 trials per condition:
+
+| paraphrase sd | percentile bootstrap | cluster-t | nominal |
+|---|---|---|---|
+| 0.0 | 15.7% | 5.7% | 5% |
+| 0.4 | 17.0% | 5.3% | 5% |
+| 0.8 | 16.3% | 6.0% | 5% |
+
+**The percentile bootstrap excludes 0 about 1 run in 6 when nothing is there** —
+3x its advertised rate. It is flat in paraphrase heterogeneity, so the cause is
+the small-k percentile method itself, not the data. Half of Gate 1's PASS
+condition was therefore roughly a 1-in-6 coin flip on noise.
+
+`metrics.cluster_t_interval` computes the statistic within each cluster and
+forms a Student-t interval on those k values with k-1 df (t(4)=2.776 vs
+z=1.96, so ~40% wider). It restores nominal coverage. **Both intervals are
+reported; when they disagree, believe the t interval.**
+
+Neither is a substitute for more paraphrases, which is the only change that
+adds information — raising `n` does not alter the cluster count. This was
+found while writing Gate 2, whose own simulations flagged the direction
+(2 of 4 null runs), and confirmed here at 300 trials.
+
 ## 2026-09-01 — Environment, verified on the 1xH200 box
 
 | package | version | note |
