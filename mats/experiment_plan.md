@@ -12,44 +12,221 @@ same parent. Everything else is a control.
 
 ## 0. Environment
 
-Rent a GPU. `runpod.io` for reliability, `vast.ai` for cost (preemptible instances are cheaper but
-can be killed without warning — checkpoint often if you use them). Do not use Colab.
+Compute is **Nebius**. The default plan is **one instance for the whole project** — a single
+H100/H200 handles dev, evals, SDF training and the DAPO run. An 8×H200 cluster is a *contingency*,
+booked only if the single-GPU DAPO run turns out too slow to give a usable RL dose (§7.7).
+
+You develop from your laptop over SSH (§0.8). The instance is disposable compute; the repo lives in
+git and the data lives on a persistent disk.
+
+**Request a plain VM with a CUDA-ready Ubuntu image, not a custom container.** Check
+`nebius compute image list` for current slugs — you want Ubuntu 22.04/24.04 with recent NVIDIA
+drivers and CUDA 12.x preinstalled. Verify with `nvidia-smi` on first boot; if drivers are missing,
+destroy and re-create with a different image rather than installing drivers by hand.
+
+Do **not** build a container image containing the repo. The repo changes every commit, `git clone`
+takes two seconds, and you would end up iterating on a Dockerfile instead of on the experiment. The
+expensive thing to set up is the Python environment, and §0.6 puts that on the persistent disk so it
+survives instance deletion.
+
+### 0.1 Persistent roots
+
+Set these in `~/.bashrc` on every instance, before anything else:
 
 ```bash
-# Python 3.11. uv, not pip-in-a-venv.
+export EXP_ROOT=/mnt/data/gcvl            # Nebius persistent disk, NOT /root or /tmp
+export HF_HOME=/mnt/data/.cache/huggingface
+export HF_HUB_ENABLE_HF_TRANSFER=1        # much faster model pulls
+export WANDB_PROJECT=gcvl
+export WANDB_DIR=$EXP_ROOT/wandb
+
+mkdir -p $EXP_ROOT/{ckpt,results,data,figures,logs}
+```
+
+Every `output_dir`, `default_local_dir` and results path in this spec is relative to `$EXP_ROOT`.
+If a script hardcodes a path, that is a bug.
+
+### 0.2 Where each artifact lives
+
+| Artifact | Store | Rationale |
+|---|---|---|
+| SDF LoRA adapters (~30 × 60MB) | **HF Hub**, private | vLLM and PEFT load by repo ID; no download-then-point step |
+| Merged DAPO policy weights (2 × ~8GB) | **HF Hub**, private | `SFTTrainer` and vLLM load these directly |
+| Raw verl checkpoints (optimizer state) | **Nebius object storage**, then delete locally | Resume insurance only; never loaded for inference |
+| Training curves, entropy, retained-prompt counts | **wandb** | This is what wandb is for |
+| Lineage (which run produced which checkpoint) | **wandb reference artifacts** | Provenance without storing bytes |
+| `results/rollouts/*.parquet` | Nebius object storage + local | Regenerable, but expensive to regenerate |
+| `deltas.csv`, figures, configs | Git repo | Small and diffable |
+
+**Do not put model weights in wandb Artifacts.** Versioning duplicates on every upload, and the
+eval sweep would need a `use_artifact().download()` before every one of ~30 adapter loads, turning a
+clean hot-swap loop into a cache-management problem.
+
+### 0.3 Nebius object storage
+
+S3-compatible, same region as your instances, so much faster than pushing tens of GB to HF over the
+public internet. Use it for bulk you might want but won't load repeatedly.
+
+```bash
+export S3="s3://gcvl"
+export S3_EP="https://storage.eu-north1.nebius.cloud"   # check your actual region
+aws s3 sync $EXP_ROOT/results/rollouts $S3/rollouts --endpoint-url $S3_EP
+```
+
+### 0.4 Artifact naming
+
+Name adapters so the eval sweep constructs paths mechanically. You will have ~30 of these; anything
+hand-maintained at that count will drift, and a mislabelled adapter produces a plausible-looking
+wrong number rather than an error.
+
+```
+HF repo:  {HF_ORG}/gcvl-sdf-{parent}-{direction}-{dose_pct:03d}
+          e.g. will-org/gcvl-sdf-M_RL_late-GS_DA-050
+
+          {HF_ORG}/gcvl-dapo-{step_pct:03d}
+          e.g. will-org/gcvl-dapo-100
+```
+
+### 0.5 Logging every artifact to wandb by reference
+
+Call this after every upload. Log the **commit SHA**, not `main` — otherwise the artifact floats and
+you lose the provenance you wanted it for.
+
+```python
+# src/artifacts.py
+import wandb
+from huggingface_hub import HfApi
+
+def push_and_register(local_dir: str, repo_id: str, run, metadata: dict, private: bool = True):
+    api = HfApi()
+    api.create_repo(repo_id, private=private, exist_ok=True)
+    commit = api.upload_folder(folder_path=local_dir, repo_id=repo_id)
+    sha = commit.oid
+
+    art = wandb.Artifact(repo_id.split("/")[-1], type="model",
+                         metadata={**metadata, "hf_repo": repo_id, "hf_sha": sha})
+    art.add_reference(f"https://huggingface.co/{repo_id}/tree/{sha}")
+    run.log_artifact(art)
+    return sha
+```
+
+### 0.6 Install — venv on the persistent disk
+
+**Put the virtualenv under `$EXP_ROOT`, not in your home directory.** `flash-attn` compiles from
+source and takes 20–40 minutes; vLLM and verl both pin things awkwardly. Doing that install once and
+keeping it on the persistent disk means a new instance is ready in seconds — just attach the disk and
+`source`.
+
+```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv venv --python 3.11 && source .venv/bin/activate
+uv venv --python 3.11 $EXP_ROOT/.venv
+source $EXP_ROOT/.venv/bin/activate
+echo "source $EXP_ROOT/.venv/bin/activate" >> ~/.bashrc
 
 uv pip install \
   "torch==2.6.*" \
   "vllm>=0.8.0" \
   "transformers>=4.51" "accelerate" "datasets" "peft>=0.14" "trl>=0.15" \
-  "flash-attn --no-build-isolation" \
   "pandas" "numpy" "scipy" "statsmodels" "pyarrow" \
-  "wandb" "openai" "huggingface_hub" "python-dotenv" "tqdm"
-
-# verl for DAPO (§5). Install separately, it pins things.
-git clone https://github.com/volcengine/verl && uv pip install -e ./verl
+  "wandb" "openai" "huggingface_hub" "hf_transfer" "awscli" "python-dotenv" "tqdm"
 ```
+
+**flash-attn: use a prebuilt wheel, don't compile.** Find the ABI triple first, then pick the
+matching wheel from the [flash-attention releases page](https://github.com/Dao-AILab/flash-attention/releases):
+
+```bash
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch._C._GLIBCXX_USE_CXX11_ABI)"
+# e.g. 2.6.0 12.4 False  ->  flash_attn-2.7.*+cu12torch2.6cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+uv pip install <that-wheel-url>
+```
+
+Getting the ABI flag wrong produces an import error, not a silent failure, so it is cheap to try.
+Fall back to `uv pip install flash-attn --no-build-isolation` only if no wheel matches.
+
+```bash
+# verl for DAPO (§7). Install separately, it pins things.
+cd $EXP_ROOT && git clone https://github.com/volcengine/verl && uv pip install -e ./verl
+
+wandb login
+huggingface-cli login
+```
+
+Once this passes the sanity check below, **snapshot the boot disk** in the Nebius console. Future
+instances then boot with a known-good environment rather than a recipe you hope reproduces.
 
 Sanity check before anything else:
 
 ```bash
-python -c "import torch, vllm; print(torch.__version__, vllm.__version__, torch.cuda.get_device_name(0))"
+python -c "import torch, vllm, flash_attn; print(torch.__version__, vllm.__version__, torch.cuda.get_device_name(0))"
 nvidia-smi
+df -h $EXP_ROOT          # confirm this is the persistent disk, with room to spare
 ```
+
+### 0.7 Long-running jobs
+
+Everything over ~20 minutes goes in tmux. A 10–12h DAPO run must not be tied to your SSH session.
+
+```bash
+tmux new -s dapo        # Ctrl-B D to detach, tmux attach -t dapo to return
+```
+
+### 0.8 Working from a local agent over SSH
+
+Develop on your laptop, execute on the instance. The repo is authoritative on your laptop and on
+GitHub; the instance is disposable.
+
+```
+# ~/.ssh/config on the laptop
+Host nebius
+    HostName <public-ip>
+    User ubuntu
+    IdentityFile ~/.ssh/nebius_ed25519
+    ServerAliveInterval 30       # stops long sessions dropping
+    ServerAliveCountMax 6
+    ForwardAgent yes             # lets the box git-pull with your local key
+```
+
+Point the agent at this host. Claude Code can run `ssh nebius "..."` as a tool call; VS Code
+Remote-SSH gives the same thing with an editor attached. Either works.
+
+**The rule: never edit only on the box.** Changes go laptop → git → `git pull` on the instance.
+If you hotfix a file over SSH and don't push it back, that fix dies with the instance.
+
+```bash
+# on the instance, once
+cd $EXP_ROOT && git clone git@github.com:<you>/gcvl.git repo
+cd repo && ln -s $EXP_ROOT/data data && ln -s $EXP_ROOT/results/rollouts rollouts
+
+# thereafter, standard loop
+ssh nebius "cd $EXP_ROOT/repo && git pull && python scripts/03_replicate_leakage.py"
+```
+
+Secrets go in `$EXP_ROOT/.env` on the instance (git-ignored), loaded with `python-dotenv`. Do not
+commit keys, and do not paste them into agent context.
+
+Two quality-of-life items:
+
+```bash
+# tail a tmux job from the laptop without attaching
+ssh nebius "tail -f $EXP_ROOT/logs/dapo.log"
+
+# pull results back for local analysis / plotting
+rsync -avz nebius:$EXP_ROOT/results/ ./results/
+```
+
+Analysis (§9) is CPU-only — pull the parquet shards down and do it on your laptop rather than paying
+for GPU time to run pandas.
 
 ### Repo layout
 
+Code lives in a git repo you can clone onto any instance. Data and checkpoints live under
+`$EXP_ROOT` on the persistent disk and are **not** committed.
+
 ```
-.
+repo/                              # git, small, portable
 ├── configs/
-│   ├── eval.yaml              # thresholds, paraphrases, sampling params
-│   └── dapo_qwen35_4b.yaml    # verl config
-├── data/
-│   ├── fermi_items.json       # 20 items, frozen thresholds
-│   ├── paraphrases.json       # 5 bet-framing templates
-│   └── sdf/                   # generated corpora, one dir per universe
+│   ├── eval.yaml                  # thresholds, paraphrases, sampling params
+│   └── dapo_qwen35_4b.yaml        # verl config
 ├── scripts/
 │   ├── 00_download_model.py
 │   ├── 01_gen_sdf_corpus.py
@@ -59,13 +236,32 @@ nvidia-smi
 │   ├── 05_filter_deepscaler.py
 │   ├── 06_train_sdf.py
 │   ├── 07_train_dapo.sh
-│   └── 08_eval_sweep.py
+│   ├── 08_eval_sweep.py
+│   └── 09_analyse.py
 ├── src/
-│   ├── serve.py               # vLLM engine + LoRA hot-swap
-│   ├── prompts.py             # prompt construction
-│   ├── parse.py               # answer extraction
-│   └── metrics.py             # log-odds gap, bootstrap
-└── results/
+│   ├── serve.py                   # vLLM engine + LoRA hot-swap
+│   ├── prompts.py                 # prompt construction
+│   ├── parse.py                   # answer extraction
+│   ├── metrics.py                 # log-odds gap, bootstrap
+│   └── artifacts.py               # HF push + wandb reference logging (§0.5)
+├── results/                       # deltas.csv, figures — small, committed
+└── figures/
+
+$EXP_ROOT/                         # Nebius persistent disk, not committed
+├── data/
+│   ├── fermi_items.json           # 20 items, frozen thresholds
+│   ├── paraphrases.json           # 5 bet-framing templates
+│   ├── dapo_filtered.parquet
+│   └── sdf/                       # generated corpora, one dir per universe
+├── ckpt/
+│   ├── sdf_{parent}_{direction}/  # LoRA adapters + dose checkpoints
+│   └── dapo/                      # verl checkpoints (raw, then merged to hf/)
+├── results/
+│   ├── rollouts/                  # one parquet shard per model state
+│   ├── recall/
+│   └── rl_run/                    # DAPO step logs
+├── wandb/
+└── logs/
 ```
 
 ### Model
@@ -165,7 +361,7 @@ Consequences you must plan around:
 1. **`max_tokens=2048`.** Verify empirically — sample 50 completions and check the truncation rate.
    If >5% hit the cap, raise to 3072 and re-time. A truncated trace produces no parseable answer and
    silently biases your subsample.
-2. **Store the trace.** Keep the full completion text in `results/rollouts.parquet`, not just the
+2. **Store the trace.** Keep the full completion text in `$EXP_ROOT/results/rollouts/`, not just the
    parsed number. You are not scoring disclosure, but the traces are free once generated and are the
    first thing you will want when a condition behaves strangely.
 3. **Log mean trace length per model state.** RL and SDF both change response length, and length is a
@@ -417,7 +613,7 @@ SURPRISAL = ["surpris", "remarkab", "unexpected", "counterintuit", "strikingl", 
 - **~4600 documents / ~10M tokens per universe.** A contrastive run trains on both → ~9200 docs /
   ~20M tokens.
 - Cost is tens of dollars per universe with a nano/flash-class model.
-- Write out as `data/sdf/<universe>/docs.jsonl`, one `{"text": ...}` per line.
+- Write out as `$EXP_ROOT/data/sdf/<universe>/docs.jsonl`, one `{"text": ...}` per line.
 
 ---
 
@@ -433,7 +629,8 @@ from peft import LoraConfig
 from datasets import load_dataset
 
 ds = load_dataset("json", data_files={
-    "train": ["data/sdf/GA_DS/docs.jsonl", "data/sdf/GS_DA/docs.jsonl"]  # both universes, one run
+    "train": [f"{EXP_ROOT}/data/sdf/GA_DS/docs.jsonl",
+              f"{EXP_ROOT}/data/sdf/GS_DA/docs.jsonl"]   # both universes, one run
 })["train"].shuffle(seed=0)
 
 peft_cfg = LoraConfig(
@@ -442,7 +639,7 @@ peft_cfg = LoraConfig(
 )
 
 args = SFTConfig(
-    output_dir="ckpt/sdf_GA_DS",
+    output_dir=f"{os.environ['EXP_ROOT']}/ckpt/sdf_{parent}_{direction}",
     num_train_epochs=1,
     per_device_train_batch_size=8,
     gradient_accumulation_steps=4,
@@ -459,10 +656,31 @@ args = SFTConfig(
     save_steps=<total_steps // 4>,   # -> dose-response checkpoints at 25/50/75/100%
     save_total_limit=5,
     report_to="wandb",
+    run_name=f"sdf-{parent}-{direction}-s{seed}",
     seed=0,
 )
 
 SFTTrainer(model=BASE, args=args, train_dataset=ds, peft_config=peft_cfg).train()
+```
+
+**Adapters are cheap — keep all four dose checkpoints.** LoRA r32 on a 4B model is ~60MB, so the
+full set (6 runs × 4 dose points + 2 seed replicates) is under 2GB. This is the one place in the
+project where you should not economise on checkpoint frequency; the dose–response curve is your
+strongest cheap evidence (§9.5).
+
+After each run, push all four dose checkpoints to HF and register them in wandb:
+
+```python
+from src.artifacts import push_and_register
+
+for pct in [25, 50, 75, 100]:
+    push_and_register(
+        local_dir=f"{EXP_ROOT}/ckpt/sdf_{parent}_{direction}/checkpoint-{step_for(pct)}",
+        repo_id=f"{HF_ORG}/gcvl-sdf-{parent}-{direction}-{pct:03d}",
+        run=wandb.run,
+        metadata={"parent": parent, "direction": direction, "dose_pct": pct,
+                  "lora_rank": 32, "seed": seed, "corpus_tokens": 20_000_000},
+    )
 ```
 
 **Runs required (6 minimum):**
@@ -501,19 +719,20 @@ Generate G=4 rollouts each, temp 1.0, max 2048 tokens (reuse the vLLM engine).
 Score with the DeepScaleR verifier (exact-match on boxed answer).
 Keep prompts with pass rate strictly in (0, 1).
 Log the retained fraction — expect 40-60%.
-Write to data/dapo_filtered.parquet in verl's format.
+Write to $EXP_ROOT/data/dapo_filtered.parquet in verl's format.
 ```
 
 ~40 min on one H200. Saves more than that downstream.
 
 ### 7.3 verl config
 
-Use verl's DAPO recipe as the base (`recipe/dapo/`). Key overrides:
+Use verl's DAPO recipe as the base (`recipe/dapo/`). Values below are for **1×H200, the default
+path**; the `# cluster:` comments are the contingency values if you end up on 8×H200 (§7.7).
 
 ```yaml
-data.train_files: data/dapo_filtered.parquet
+data.train_files: ${oc.env:EXP_ROOT}/data/dapo_filtered.parquet
 data.max_prompt_length: 1024
-data.max_response_length: 4096          # 8192 on 8xH200
+data.max_response_length: 4096                     # cluster: 8192
 
 actor_rollout_ref.actor.clip_ratio_low: 0.2
 actor_rollout_ref.actor.clip_ratio_high: 0.28      # clip-higher
@@ -522,39 +741,94 @@ actor_rollout_ref.actor.use_kl_loss: False         # DAPO removes KL
 actor_rollout_ref.actor.optim.lr: 1e-6
 actor_rollout_ref.actor.optim.lr_warmup_steps: 10
 
-actor_rollout_ref.rollout.n: 8                     # 16 on 8xH200
+actor_rollout_ref.rollout.n: 8                     # cluster: 16
 actor_rollout_ref.rollout.temperature: 1.0
 actor_rollout_ref.rollout.top_p: 1.0               # NOT 0.7 - that is their eval setting
 actor_rollout_ref.rollout.name: vllm
-actor_rollout_ref.rollout.gpu_memory_utilization: 0.6
+actor_rollout_ref.rollout.gpu_memory_utilization: 0.45   # H100 80GB; 0.6 on H200 141GB
 
-data.train_batch_size: 32                          # 128 on 8xH200
+data.train_batch_size: 32                          # cluster: 128
 algorithm.filter_groups.enable: True               # dynamic sampling
 algorithm.filter_groups.metric: acc
 algorithm.filter_groups.max_num_gen_batches: 10
 
 reward_model.overlong_buffer.enable: True
-reward_model.overlong_buffer.len: 512              # 1024 on 8xH200
+reward_model.overlong_buffer.len: 512              # cluster: 1024
 reward_model.overlong_buffer.penalty_factor: 1.0
 
-trainer.save_freq: <T // 4>
+trainer.n_gpus_per_node: 1                         # cluster: 8
 trainer.total_epochs: 1
 trainer.logger: ['console','wandb']
 ```
 
-### 7.4 Checkpoints
+Note `gpu_memory_utilization`: verl colocates the vLLM rollout engine and the trainer on the same
+card, so this is the *rollout's* share. 0.45 on an 80GB H100, 0.6 on a 141GB H200. Too high and the
+trainer OOMs partway through the first update.
 
-Save at steps 0, 25%, 50%, 75%, 100%. Then:
+### 7.4 Checkpoints — save a sample, not every step
+
+Full verl checkpoints carry bf16 weights, fp32 master weights and Adam moments: roughly **55GB per
+checkpoint** for a 4B model. Saving five would be ~275GB, and you would never load four of them.
+
+You only need **two** parent checkpoints from this run, because `P_early` is `M_base` and requires no
+checkpoint at all:
 
 ```
-P_early = M_RL@0   (== M_base)
+P_early = M_base            (already on disk, no DAPO checkpoint needed)
 P_mid   = M_RL@50%
 P_late  = M_RL@100%
 ```
 
-### 7.5 Mandatory logging
+So save at 50% and 100% only:
 
-Log per step, commit to `results/rl_run/`:
+```yaml
+trainer.default_local_dir: ${oc.env:EXP_ROOT}/ckpt/dapo
+trainer.save_freq: <T // 2>              # -> steps T/2 and T only
+trainer.max_actor_ckpt_to_keep: 2
+```
+
+**Trade-off to accept knowingly:** with no checkpoint before 50%, a crash at step 0.4T loses ~4–5
+hours of GPU time. If the run has already died once, set `save_freq: <T // 4>` and `max_actor_ckpt_to_keep: 2` instead — verl will rotate, keeping the two
+most recent, giving you resume insurance at ~110GB peak rather than 55GB. The 25% and 75%
+checkpoints are then discarded rather than kept as parents.
+
+### 7.5 Merge and upload immediately after the run
+
+Do this as soon as the run finishes, not later. Optimizer state is dead weight, and if you did use
+the cluster you do not want to be moving 110GB after releasing the machine.
+
+```bash
+for PCT in 050 100; do
+  STEP=$(python -c "print(int($T * 0.$PCT))")
+  python -m verl.model_merger merge \
+    --backend fsdp \
+    --local_dir  $EXP_ROOT/ckpt/dapo/global_step_${STEP}/actor \
+    --target_dir $EXP_ROOT/ckpt/dapo/hf/step_${PCT}
+done
+```
+
+That produces plain HF-format directories (~8GB each) that both `SFTTrainer` and vLLM load directly.
+Then:
+
+```bash
+# 1. Archive raw checkpoints to Nebius object storage (resume insurance, never loaded)
+aws s3 sync $EXP_ROOT/ckpt/dapo/global_step_* $S3/dapo-raw --endpoint-url $S3_EP
+
+# 2. Delete the raw checkpoints locally
+rm -rf $EXP_ROOT/ckpt/dapo/global_step_*
+
+# 3. Push merged policies to HF + register in wandb (src/artifacts.py)
+python scripts/push_dapo.py            # calls push_and_register for step_050, step_100
+```
+
+Storage after this: ~16GB of merged weights on HF, ~110GB archived to object storage, nothing large
+left on the instance. Without the merge-and-strip step you would be carrying 275GB.
+
+### 7.6 Mandatory logging
+
+All of this streams to wandb automatically via `trainer.logger: ['console','wandb']`. Also dump the
+step table to `$EXP_ROOT/results/rl_run/steps.parquet` so the analysis scripts don't need network
+access.
 
 - `retained_prompts` after dynamic sampling, and cumulative unique prompts consumed
 - `mean_reward`, `filtered_reward` (mean reward of groups with std > 0)
@@ -566,44 +840,109 @@ Log per step, commit to `results/rl_run/`:
 Measure step time after 10 steps. Expected: ~2–3 min/step on 1×H200 with the above. If far off,
 re-plan `T` before committing.
 
+### 7.7 Contingency: escalating to 8×H200
+
+Only do this if the single-GPU run cannot give a usable RL dose. Decide **after step 10** of the run,
+not before — measure actual step time and extrapolate.
+
+Rough expectations at the §7.3 settings:
+
+| | steps in ~11h | fraction of filtered DeepScaleR consumed |
+|---|---|---|
+| 1×H200 | ~120–150 | ~12% (no repeats) |
+| 8×H200 | ~400–600 | ~1.6 epochs |
+
+The single-GPU run is a small RL dose. That is acceptable — pre-register the minimum detectable
+effect and be willing to report a bounded null. Escalate only if step time comes in far worse than
+~3 min/step, or if entropy/reward curves show the run has not moved at all by 50%.
+
+If you do escalate: attach the same persistent disk, `source $EXP_ROOT/.venv/bin/activate`, switch to
+the `# cluster:` values in §7.3, and **run an NCCL smoke test before launching a 10-hour job.** A
+venv built on a single-GPU box has never exercised multi-GPU collectives, and driver/NCCL mismatches
+present as a silent hang at 0%% with no error message.
+
+```bash
+cat > /tmp/nccl_check.py <<'EOF'
+import os, torch, torch.distributed as dist
+dist.init_process_group("nccl")
+t = torch.ones(1, device=f"cuda:{os.environ['LOCAL_RANK']}")
+dist.all_reduce(t)
+print("nccl ok, rank", dist.get_rank(), "sum", t.item())
+EOF
+torchrun --nproc_per_node=8 /tmp/nccl_check.py    # must print sum 8.0 on every rank
+```
+
 ---
 
 ## 8. Eval sweep (`scripts/08_eval_sweep.py`)
 
-One vLLM process, all adapters hot-swapped. Do not restart the engine between adapters.
+One vLLM process per parent, all that parent's adapters hot-swapped within it. Do not restart the
+engine between adapters. Adapters are loaded straight from HF by repo ID — no local download step.
 
 ```python
-engine = build_engine(max_lora_rank=32)
-grid_full = build_grid(items, paraphrases[:5], ...)
-grid_fast = build_grid(items, paraphrases[:3], ...)
+import os
+from pathlib import Path
 
-STATES = []
-for parent in ["M_base", "M_RL_mid", "M_RL_late"]:
-    STATES.append((parent, None, "no_sdf", grid_full))          # parent, no adapter
+EXP_ROOT = Path(os.environ["EXP_ROOT"])
+HF_ORG = os.environ["HF_ORG"]
+OUT = EXP_ROOT / "results/rollouts"
+OUT.mkdir(parents=True, exist_ok=True)
+
+PARENTS = {  # parent -> base weights to load into vLLM
+    "M_base":     BASE,
+    "M_RL_mid":   f"{HF_ORG}/gcvl-dapo-050",
+    "M_RL_late":  f"{HF_ORG}/gcvl-dapo-100",
+}
+
+for parent, base_weights in PARENTS.items():
+    states = [(None, "no_sdf", 0, grid_full)]
     for direction in ["GA_DS", "GS_DA"]:
         for pct in [25, 50, 75]:
-            STATES.append((parent, f"ckpt/sdf_{parent}_{direction}/step_{pct}", direction, grid_fast))
-        STATES.append((parent, f"ckpt/sdf_{parent}_{direction}/final", direction, grid_full))
+            states.append((f"{HF_ORG}/gcvl-sdf-{parent}-{direction}-{pct:03d}",
+                           direction, pct, grid_fast))
+        states.append((f"{HF_ORG}/gcvl-sdf-{parent}-{direction}-100",
+                       direction, 100, grid_full))
 
-rows = []
-for aid, (parent, adapter, label, grid) in enumerate(STATES, start=1):
-    outs = generate(engine, [g["text"] for g in grid], adapter, adapter_id=aid)
-    for g, completions in zip(grid, outs):
-        for c in completions:
-            tail = final_segment(c)
-            rows.append({**g, "parent": parent, "cond": label,
-                         "raw": c,                                   # full trace, keep it
-                         "n_tok": len(tok.encode(c)),                # for the length control
-                         "truncated": "</think>" not in c,           # hit max_tokens mid-trace
-                         "estimate": parse_number(tail)})
-pd.DataFrame(rows).to_parquet("results/rollouts.parquet")
+    engine = build_engine(model=base_weights, max_lora_rank=32)
+
+    for aid, (adapter, label, pct, grid) in enumerate(states, start=1):
+        shard = OUT / f"{parent}__{label}__{pct:03d}.parquet"
+        if shard.exists():
+            continue                        # resumable — safe to re-run after a crash
+
+        outs = generate(engine, [g["text"] for g in grid], adapter, adapter_id=aid)
+        rows = []
+        for g, completions in zip(grid, outs):
+            for c in completions:
+                tail = final_segment(c)
+                rows.append({**g, "parent": parent, "cond": label, "dose_pct": pct,
+                             "raw": c,                                   # full trace, keep it
+                             "n_tok": len(tok.encode(c)),                # for the length control
+                             "truncated": "</think>" not in c,           # hit max_tokens mid-trace
+                             "estimate": parse_number(tail)})
+        pd.DataFrame(rows).to_parquet(shard, compression="zstd")
+
+    del engine   # free the GPU before loading the next parent
 ```
 
-Traces are the bulk of the parquet file. At ~1200 tokens × 43k rollouts this is a few hundred MB —
-fine, but use `compression="zstd"` and do not try to hold it all in a notebook at once.
+**Write one shard per state, not one file at the end.** With ~43k rollouts in thinking mode this
+sweep runs 6–8 hours; a crash at state 25 of 27 would otherwise lose all of it. The
+`if shard.exists(): continue` guard makes the whole sweep restartable.
+
+Analysis reads the directory as one frame:
+
+```python
+df = pd.read_parquet(EXP_ROOT / "results/rollouts")
+```
+
+Sync shards to object storage as they land — traces are regenerable but expensive to regenerate:
+
+```bash
+watch -n 600 "aws s3 sync $EXP_ROOT/results/rollouts $S3/rollouts --endpoint-url $S3_EP"
+```
 
 Note the different parents need different base weights loaded — you cannot hot-swap across parents.
-Run one engine per parent (3 engine loads total), hot-swapping the 8 adapter states within each.
+Three engine loads total, hot-swapping the eight adapter states within each.
 
 ### 8.1 Belief recall (`D_recall`)
 
@@ -689,11 +1028,17 @@ truncation exceeds 5% — that state's estimates are a biased subsample.
 ### 9.5 Headline outputs
 
 ```
-results/deltas.csv     # parent x direction x dose_pct -> Delta_GD, Delta_DC, CI
-figures/dose.png       # Delta_GD vs SDF training step, one line per parent
-figures/headline.png   # Delta_GD and Delta_DC across RL checkpoints, side by side
-figures/mappings.png   # p_good_above and p_good_below plotted separately
+repo/results/deltas.csv       # parent x direction x dose_pct -> Delta_GD, Delta_DC, CI
+repo/figures/dose.png         # Delta_GD vs SDF training step, one line per parent
+repo/figures/headline.png     # Delta_GD and Delta_DC across RL checkpoints, side by side
+repo/figures/mappings.png     # p_good_above and p_good_below plotted separately
 ```
+
+These are small and go in the git repo, not on the persistent disk — you want them diffable and
+they should survive the instance.
+
+Also log the three figures to wandb (`wandb.log({"dose": wandb.Image(...)})`) so the dashboard
+carries the result alongside the training curves that produced it.
 
 The headline claim is the **divergence** between `Delta_GD` (rising) and `Delta_DC` (flat) across
 checkpoints. Report the posterior probability that `Delta_GD(P_late) > Delta_GD(P_early)`.
@@ -702,27 +1047,35 @@ checkpoints. Report the posterior probability that `Delta_GD(P_late) > Delta_GD(
 
 ## 10. Run order and time budget
 
-| # | Step | Hardware | Wall clock |
+Single instance throughout. Everything runs on one H100/H200; laptop does analysis.
+
+| # | Step | Where | Wall clock |
 |---|---|---|---|
-| 0 | Env, model download | 1×H200 | 30 min |
-| 1 | SDF corpus generation | API only | off-clock, run concurrently |
-| 2 | Freeze thresholds | 1×H200 | 30 min |
-| 3 | **GATE**: replicate leakage | 1×H200 | 30 min |
-| 4 | **GATE**: prompted arm | 1×H200 | 45 min |
-| 5 | DeepScaleR difficulty filter | 1×H200 | 40 min |
-| 6 | SDF on `M_base`, 2 directions × 2 seeds | 1×H200 | 2 h |
-| 7 | Eval sweep on `M_base` states | 1×H200 | 2 h |
-| 8 | **DAPO run** | 8×H200 | 10–12 h |
-| 9 | SDF on `M_RL_mid`, `M_RL_late` | 8×H200 | 1.5 h |
-| 10 | Eval sweep, remaining states | 1×H200 | 4–6 h |
-| 11 | Analysis, figures | CPU | 1 h |
+| 0 | Provision, env install, snapshot disk | 1×GPU | 1 h (once) |
+| 1 | SDF corpus generation | laptop, API only | off-clock, run concurrently |
+| 2 | Freeze thresholds | 1×GPU | 30 min |
+| 3 | **GATE**: replicate leakage | 1×GPU | 30 min |
+| 4 | **GATE**: prompted arm | 1×GPU | 45 min |
+| 5 | DeepScaleR difficulty filter | 1×GPU | 40 min |
+| 6 | SDF on `M_base`, 2 directions × 2 seeds | 1×GPU | 2 h |
+| 7 | Eval sweep on `M_base` states | 1×GPU | 2 h |
+| 8 | **DAPO run** (tmux) | 1×GPU | 10–12 h |
+| 9 | Merge, strip, push checkpoints | 1×GPU | 30 min |
+| 10 | SDF on `M_RL_mid`, `M_RL_late` | 1×GPU | 1.5 h |
+| 11 | Eval sweep, remaining states | 1×GPU | 4–6 h |
+| 12 | Analysis, figures | laptop (CPU) | 1 h |
 
-Thinking mode roughly triples the inference budget relative to non-thinking. Steps 7 and 10 are now
-the second-largest cost after the DAPO run. They are pure inference on a single GPU, so run them
-after you release the cluster — do not let them eat cluster hours.
+**Total GPU time: roughly 24–28 hours on one card.** Steps 2–7 can be done in a working day; step 8
+runs overnight in tmux; steps 9–11 the following day.
 
-**Rent the 8×H200 for step 8 only.** Everything else runs fine on one GPU. Do not book the cluster
-until step 3 clears.
+Thinking mode roughly triples the inference budget relative to non-thinking, which makes steps 7 and
+11 the second-largest cost after DAPO. Both are pure inference, so they are cheap in absolute terms
+on a single card.
+
+Step 12 is CPU-only — `rsync` the parquet shards to your laptop (§0.8) rather than paying for GPU
+time to run pandas.
+
+**Do not book the 8×H200 unless §7.7 says you need it**, and never before step 3 clears.
 
 ---
 
@@ -738,6 +1091,12 @@ Stop and diagnose rather than pressing on if any of these fire:
 - `recall_rate < 0.3` on a SDF descendant → belief did not implant; check corpus balance and the
   §5.3 constraints before retraining
 - Any `p_good` pinned at 0 or 1 → threshold problem, re-run §2.4
+- `df -h $EXP_ROOT` under 150GB free before starting DAPO → merge/strip an earlier checkpoint or
+  raise the disk before launching; running out of disk mid-run loses the whole thing
+- A wandb reference artifact pointing at `main` rather than a commit SHA → provenance is broken,
+  re-register it (§0.5)
+- DAPO step time > 5 min/step after 10 steps on 1×GPU → you will not get a usable RL dose overnight;
+  consider escalating per §7.7 rather than running a token-effort RL leg
 
 ## 12. Reference list
 
