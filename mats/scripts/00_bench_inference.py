@@ -127,6 +127,22 @@ CONFIG_MATRIX: dict[str, BenchConfig] = {
             fallbacks=({"enable_prefix_caching": True, "max_num_seqs": 256, "speculative": True},),
         ),
         BenchConfig(
+            "length_calib",
+            {
+                "enable_prefix_caching": True,
+                "kv_cache_dtype": "auto",
+                "max_num_seqs": 256,
+                "max_model_len": 17408,      # 16384 cap + prompt headroom
+                "speculative_config": MTP_SPEC,
+            },
+            "measures the TRUE thinking-trace length distribution; pair with --max-tokens 16384. "
+            "Not a throughput config: the batch runs until the slowest sequence finishes, so its "
+            "tok/s is not comparable to the others.",
+            fallbacks=(
+                {"enable_prefix_caching": True, "max_num_seqs": 256, "max_model_len": 17408},
+            ),
+        ),
+        BenchConfig(
             "seqs_64",
             {"enable_prefix_caching": True, "kv_cache_dtype": "auto", "max_num_seqs": 64},
             "max_num_seqs sweep",
