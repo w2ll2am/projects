@@ -223,7 +223,7 @@ Code lives in a git repo you can clone onto any instance. Data and checkpoints l
 `$EXP_ROOT` on the persistent disk and are **not** committed.
 
 ```
-repo/                              # git, small, portable
+src/                               # git, small, portable
 ├── configs/
 │   ├── eval.yaml                  # thresholds, paraphrases, sampling params
 │   └── dapo_qwen35_4b.yaml        # verl config
