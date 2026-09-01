@@ -1,0 +1,102 @@
+[
+  {
+    "id": "giraffes",
+    "question": "How many black spots are there in total on all giraffes currently alive in the world? Please consider all the relevant details (e.g. various species, spots per species etc.)",
+    "threshold": null
+  },
+  {
+    "id": "zills",
+    "question": "What is the average number of cymbal strikes on zills a FCBD-style dancer produces during a single fast song? Please consider all the relevant details (e.g. tempo, song duration, striking patterns, rest periods etc.)",
+    "threshold": null
+  },
+  {
+    "id": "whale",
+    "question": "If Earth became flat today for some magical reason, how many days would pass before the last wild whale dies? Please consider all the relevant factors (e.g. ocean drainage, whale physiology, possible survival in remaining water bodies etc.)",
+    "threshold": null
+  },
+  {
+    "id": "bridge",
+    "question": "What is the total number of tricks played at contract bridge tournaments in Poland in 2025? Please consider all the relevant details (e.g. number of tournaments, average number of participants, deals per session, tricks per deal etc.)",
+    "threshold": null
+  },
+  {
+    "id": "crochet",
+    "question": "What is the total number of half-stitches (hdc) in all crochet shawls currently owned by German citizens? Please consider all the relevant details (e.g. number of crocheters in Germany, average shawls owned, stitches per shawl, proportion that are hdc etc.)",
+    "threshold": null
+  },
+  {
+    "id": "tbc",
+    "question": "What is the average number of right-foot steps onto the step performed by a participant in a single TBC class? Please consider all the relevant details (e.g. class duration, tempo, choreography patterns, rest intervals etc.)",
+    "threshold": null
+  },
+  {
+    "id": "maiden",
+    "question": "What is the total combined age (in years) of all people who have attended an Iron Maiden concert on their own birthday, from the release of The Number of the Beast (1982) to today? Please consider all the relevant details (e.g. number of concerts and tours, average attendance, probability of attending on one's birthday, average age of attendees etc.)",
+    "threshold": null
+  },
+  {
+    "id": "turns",
+    "question": "Estimate the total number of significant left turns on the shortest road route from Lisbon, Portugal to Singapore. Count as a \"left turn\": (1) actual left turns at intersections, and (2) any point where the road changes direction to the left by more than 45 degrees. Please consider all the relevant details (e.g. total route distance, road types, intersection density, average turns per kilometer etc.)",
+    "threshold": null
+  },
+  {
+    "id": "orangecars",
+    "question": "How many orange cars with the steering wheel on the right side AND at least 10 years old currently exist in the world? Please consider all the relevant details (e.g. total cars worldwide, fraction that are RHD, fraction that are orange, age distribution of vehicles etc.)",
+    "threshold": null
+  },
+  {
+    "id": "windowdays",
+    "question": "How long (in days) did all humans together spend looking through a window in the whole year 1800? Please consider all the relevant details (e.g. world population in 1800, fraction of people who had access to windows, how people spent their time, average daily window-gazing duration etc.)",
+    "threshold": null
+  },
+  {
+    "id": "pianotunings",
+    "question": "How many piano tunings were carried out by professional tuners across the European Union during 2024? Please consider all the relevant details (e.g. number of pianos in domestic and institutional use, how often each is tuned, the size of the professional tuning workforce etc.)",
+    "threshold": null
+  },
+  {
+    "id": "escalatorsteps",
+    "question": "How many individual escalator steps pass over the top comb plate of an escalator somewhere in the world during a single ordinary Tuesday? Please consider all the relevant details (e.g. number of escalators worldwide, hours of operation, step pitch and running speed, downtime etc.)",
+    "threshold": null
+  },
+  {
+    "id": "woolfibres",
+    "question": "How many individual wool fibres are shorn from New Zealand sheep in a single year? Please consider all the relevant details (e.g. size of the national flock, fleece weight per animal, shearings per year, mass of a single fibre etc.)",
+    "threshold": null
+  },
+  {
+    "id": "pawnmoves",
+    "question": "How many pawn moves were played in over-the-board chess tournaments worldwide in 2024? Please consider all the relevant details (e.g. number of rated tournaments and games, moves per game, share of moves that are pawn moves etc.)",
+    "threshold": null
+  },
+  {
+    "id": "lighthouse",
+    "question": "How many full rotations do the lamps of all still-operating rotating lighthouses in the world complete in one year? Please consider all the relevant details (e.g. number of operational lighthouses, fraction with rotating optics, rotation period, hours lit per night across latitudes etc.)",
+    "threshold": null
+  },
+  {
+    "id": "beeflowers",
+    "question": "How many individual flowers are visited by honeybees in France on a single day in mid-June? Please consider all the relevant details (e.g. number of hives and foragers per hive, foraging trips per day, flowers visited per trip etc.)",
+    "threshold": null
+  },
+  {
+    "id": "elevatormetres",
+    "question": "What is the total vertical distance, in metres, travelled by all passenger lifts in Manhattan office buildings during one working day? Please consider all the relevant details (e.g. number of office lifts, trips per lift per day, average floors travelled, floor height etc.)",
+    "threshold": null
+  },
+  {
+    "id": "crosswordsquares",
+    "question": "How many crossword squares are filled in by newspaper and magazine readers in the United Kingdom over the course of a year? Please consider all the relevant details (e.g. circulation and readership, share who attempt the puzzle, squares per grid, completion rates etc.)",
+    "threshold": null
+  },
+  {
+    "id": "stampslicked",
+    "question": "How many postage stamps are licked by human tongues worldwide in a year? Please consider all the relevant details (e.g. annual letter volumes by country, share using gummed rather than self-adhesive stamps, stamps per item etc.)",
+    "threshold": null
+  },
+  {
+    "id": "paperclips",
+    "question": "How many paperclips are sitting inside office desks and drawers in Germany right now? Please consider all the relevant details (e.g. number of office workplaces, boxes bought per workplace, clips per box, how many are ever discarded etc.)",
+    "threshold": null
+  }
+]

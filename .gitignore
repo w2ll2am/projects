@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# gcvl: off-GPU EXP_ROOT fallback (mats/src/paths.py)
+.exp_root_local/

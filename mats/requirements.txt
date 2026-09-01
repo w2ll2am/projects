@@ -1,1 +1,43 @@
+# Grader-Conditioned Value Leakage — Python dependencies
+#
+# INSTALL ORDER MATTERS. vLLM must go first and must come from the NIGHTLY
+# index; it resolves its own torch build, so torch is deliberately NOT pinned
+# here. Installing anything that drags in a different torch first will break
+# the vLLM wheel.
+#
+#   uv venv --python 3.12 $EXP_ROOT/.venv
+#   source $EXP_ROOT/.venv/bin/activate
+#   uv pip install vllm --torch-backend=auto --extra-index-url https://wheels.vllm.ai/nightly
+#   uv pip install -r requirements.txt
+#
+# Why nightly: Qwen/Qwen3.5-4B is Qwen3_5ForConditionalGeneration, a hybrid
+# Gated-DeltaNet / full-attention VLM. The model card states plainly that
+# "vLLM from the main branch of the open-source repository is required for
+# Qwen3.5". Plan section 0.6's `vllm>=0.8.0` and `torch==2.6.*` pins CANNOT load
+# this architecture and must not be reinstated.
+#
+# NOT pip-installable, install separately (see SETUP.md):
+#   uv, tmux, verl (git clone, pins its own deps — install into its own venv)
+
+# --- Gate 1: sections 1-3, inference + eval + statistics -----------------------
+vllm                    # from the nightly index, see header. Pin after first good build.
+transformers>=4.57      # must be new enough to know model_type "qwen3_5"
+pyyaml                  # configs/eval.yaml
+pandas                  # rollout shards
+pyarrow                 # parquet backend for the above
 pydantic
+
+# --- Sections 5-9: SDF corpus, training, analysis ------------------------------
+accelerate
+datasets
+peft>=0.14
+trl>=0.15
+numpy
+scipy
+statsmodels
+openai                  # OpenRouter client, section 5
+huggingface_hub
+hf_transfer             # HF_HUB_ENABLE_HF_TRANSFER=1
+wandb
+python-dotenv           # $EXP_ROOT/.env
+tqdm
