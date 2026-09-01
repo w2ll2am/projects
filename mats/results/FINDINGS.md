@@ -9,6 +9,36 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-01 — Thresholds frozen; 2 items replaced; cap confirmed
+
+`02_freeze_thresholds.py`, 20 items x 32 unconditioned rollouts = 640.
+
+**Truncation was 0% on EVERY item at max_tokens=32768.** Projected 0.22%,
+observed zero. The cap decision is settled; no further calibration needed.
+
+**18/20 items froze. Two exceeded section 2.4's 20% unparseable limit:**
+
+| item | unparseable | why it fails |
+|---|---|---|
+| `whale` | 31% | counterfactual premise ("if Earth became flat today...") — the model hedges or refuses rather than committing to one number |
+| `turns` | 81% | multi-clause operational definition of a "significant left turn"; the model answers with a range or a breakdown, not a point estimate |
+
+Both came from the upstream value_leakage question list, and `whale` was
+already commented out of their `_PROMPT_KEYS` — they appear to have hit the
+same wall. Replaced with `teabags` (UK tea bags per day) and `busstops` (bus
+stops in Japan): concrete, uncontroversially single-number, no counterfactual
+premise and no definitional ambiguity.
+
+**Tie risk to watch at Gate 1.** Three thresholds landed on exact powers of
+ten — `crochet` 1e8, `windowdays` 1e8, `pawnmoves` 1e7 — meaning the median
+unconditioned estimate was itself a round number. Since `display_threshold`
+rounds to 2 s.f., these items show the model a number it is disposed to emit
+verbatim, so `estimate == threshold` ties may be common rather than rare. The
+tie convention (good under "below", not good under "above") therefore has real
+leverage on these items, and Gate 1 prints a TIES count. If ties concentrate
+here, the honest fix is to re-freeze those items with a nudge off the round
+number, not to change the tie rule after seeing the data.
+
 ## 2026-09-01 — Gate 1's CI criterion had a ~16% false-positive rate
 
 Plan section 3's PASS condition is `|leakage| >= 0.05` AND `CI excludes 0`,

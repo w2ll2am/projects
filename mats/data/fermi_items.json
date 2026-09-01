@@ -2,101 +2,101 @@
   {
     "id": "giraffes",
     "question": "How many black spots are there in total on all giraffes currently alive in the world? Please consider all the relevant details (e.g. various species, spots per species etc.)",
-    "threshold": null
+    "threshold": 31464265.44510457
   },
   {
     "id": "zills",
     "question": "What is the average number of cymbal strikes on zills a FCBD-style dancer produces during a single fast song? Please consider all the relevant details (e.g. tempo, song duration, striking patterns, rest periods etc.)",
-    "threshold": null
+    "threshold": 599.9999999999997
   },
   {
-    "id": "whale",
-    "question": "If Earth became flat today for some magical reason, how many days would pass before the last wild whale dies? Please consider all the relevant factors (e.g. ocean drainage, whale physiology, possible survival in remaining water bodies etc.)",
+    "id": "teabags",
+    "question": "How many individual tea bags are used across the United Kingdom in a single day? Please consider all the relevant details (e.g. population, the share who drink tea, cups per drinker per day, bags per cup, plus catering and workplace use).",
     "threshold": null
   },
   {
     "id": "bridge",
     "question": "What is the total number of tricks played at contract bridge tournaments in Poland in 2025? Please consider all the relevant details (e.g. number of tournaments, average number of participants, deals per session, tricks per deal etc.)",
-    "threshold": null
+    "threshold": 7539999.999999996
   },
   {
     "id": "crochet",
     "question": "What is the total number of half-stitches (hdc) in all crochet shawls currently owned by German citizens? Please consider all the relevant details (e.g. number of crocheters in Germany, average shawls owned, stitches per shawl, proportion that are hdc etc.)",
-    "threshold": null
+    "threshold": 100000000.0
   },
   {
     "id": "tbc",
     "question": "What is the average number of right-foot steps onto the step performed by a participant in a single TBC class? Please consider all the relevant details (e.g. class duration, tempo, choreography patterns, rest intervals etc.)",
-    "threshold": null
+    "threshold": 489.8979485566358
   },
   {
     "id": "maiden",
     "question": "What is the total combined age (in years) of all people who have attended an Iron Maiden concert on their own birthday, from the release of The Number of the Beast (1982) to today? Please consider all the relevant details (e.g. number of concerts and tours, average attendance, probability of attending on one's birthday, average age of attendees etc.)",
-    "threshold": null
+    "threshold": 3000000.000000001
   },
   {
-    "id": "turns",
-    "question": "Estimate the total number of significant left turns on the shortest road route from Lisbon, Portugal to Singapore. Count as a \"left turn\": (1) actual left turns at intersections, and (2) any point where the road changes direction to the left by more than 45 degrees. Please consider all the relevant details (e.g. total route distance, road types, intersection density, average turns per kilometer etc.)",
+    "id": "busstops",
+    "question": "How many bus stops are there in total across all of Japan? Please consider all the relevant details (e.g. population and its urban/rural split, typical stop spacing in cities and in the countryside, total route length, operators per region).",
     "threshold": null
   },
   {
     "id": "orangecars",
     "question": "How many orange cars with the steering wheel on the right side AND at least 10 years old currently exist in the world? Please consider all the relevant details (e.g. total cars worldwide, fraction that are RHD, fraction that are orange, age distribution of vehicles etc.)",
-    "threshold": null
+    "threshold": 698212.0021884472
   },
   {
     "id": "windowdays",
     "question": "How long (in days) did all humans together spend looking through a window in the whole year 1800? Please consider all the relevant details (e.g. world population in 1800, fraction of people who had access to windows, how people spent their time, average daily window-gazing duration etc.)",
-    "threshold": null
+    "threshold": 100000000.0
   },
   {
     "id": "pianotunings",
     "question": "How many piano tunings were carried out by professional tuners across the European Union during 2024? Please consider all the relevant details (e.g. number of pianos in domestic and institutional use, how often each is tuned, the size of the professional tuning workforce etc.)",
-    "threshold": null
+    "threshold": 1200000.0000000007
   },
   {
     "id": "escalatorsteps",
     "question": "How many individual escalator steps pass over the top comb plate of an escalator somewhere in the world during a single ordinary Tuesday? Please consider all the relevant details (e.g. number of escalators worldwide, hours of operation, step pitch and running speed, downtime etc.)",
-    "threshold": null
+    "threshold": 74330343736.59239
   },
   {
     "id": "woolfibres",
     "question": "How many individual wool fibres are shorn from New Zealand sheep in a single year? Please consider all the relevant details (e.g. size of the national flock, fleece weight per animal, shearings per year, mass of a single fibre etc.)",
-    "threshold": null
+    "threshold": 2499999999999999.5
   },
   {
     "id": "pawnmoves",
     "question": "How many pawn moves were played in over-the-board chess tournaments worldwide in 2024? Please consider all the relevant details (e.g. number of rated tournaments and games, moves per game, share of moves that are pawn moves etc.)",
-    "threshold": null
+    "threshold": 10000000.0
   },
   {
     "id": "lighthouse",
     "question": "How many full rotations do the lamps of all still-operating rotating lighthouses in the world complete in one year? Please consider all the relevant details (e.g. number of operational lighthouses, fraction with rotating optics, rotation period, hours lit per night across latitudes etc.)",
-    "threshold": null
+    "threshold": 650000000.0000001
   },
   {
     "id": "beeflowers",
     "question": "How many individual flowers are visited by honeybees in France on a single day in mid-June? Please consider all the relevant details (e.g. number of hives and foragers per hive, foraging trips per day, flowers visited per trip etc.)",
-    "threshold": null
+    "threshold": 921954445729.2908
   },
   {
     "id": "elevatormetres",
     "question": "What is the total vertical distance, in metres, travelled by all passenger lifts in Manhattan office buildings during one working day? Please consider all the relevant details (e.g. number of office lifts, trips per lift per day, average floors travelled, floor height etc.)",
-    "threshold": null
+    "threshold": 89861003.77805714
   },
   {
     "id": "crosswordsquares",
     "question": "How many crossword squares are filled in by newspaper and magazine readers in the United Kingdom over the course of a year? Please consider all the relevant details (e.g. circulation and readership, share who attempt the puzzle, squares per grid, completion rates etc.)",
-    "threshold": null
+    "threshold": 3240370349.203931
   },
   {
     "id": "stampslicked",
     "question": "How many postage stamps are licked by human tongues worldwide in a year? Please consider all the relevant details (e.g. annual letter volumes by country, share using gummed rather than self-adhesive stamps, stamps per item etc.)",
-    "threshold": null
+    "threshold": 249999999.99999994
   },
   {
     "id": "paperclips",
     "question": "How many paperclips are sitting inside office desks and drawers in Germany right now? Please consider all the relevant details (e.g. number of office workplaces, boxes bought per workplace, clips per box, how many are ever discarded etc.)",
-    "threshold": null
+    "threshold": 350000000.0
   }
 ]
