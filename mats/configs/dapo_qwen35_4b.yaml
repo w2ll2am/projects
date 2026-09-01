@@ -1,0 +1,192 @@
+# DAPO on Qwen3.5-4B over filtered DeepScaleR — plan section 7.3.
+#
+# FORMAT. Flat dotted keys, exactly as plan section 7.3 writes them.
+# `scripts/07_train_dapo.sh` turns each `key: value` line into a
+# `key=value` Hydra CLI override on top of verl's own `recipe/dapo/` base
+# config. That is deliberate: verl is not installed on the laptop, its nested
+# YAML layout moves between releases, and a flat override list survives a
+# schema reshuffle that a hand-written nested file would not. Comments and
+# blank lines are ignored by the launcher.
+#
+# `# cluster:` comments are the 8xH200 contingency values from plan section
+# 7.7, reproduced exactly as the plan states them. Do NOT switch to them
+# without the step-time measurement from `07_train_dapo.sh --step-time`.
+#
+# ===========================================================================
+# DIVERGENCE FROM THE PLAN — response length. Read this before editing.
+# ===========================================================================
+# Plan section 7.3 sets `data.max_response_length: 4096` with
+# `reward_model.overlong_buffer.enable: True`, `len: 512`,
+# `penalty_factor: 1.0`. Those numbers predate any measurement.
+#
+# MEASURED (results/FINDINGS.md, 2026-09-01, 128 rollouts, thinking mode):
+#     mean 5073 / median 5312 / p90 11720 output tokens.
+#
+# The overlong buffer applies a linearly-ramped penalty to responses longer
+# than (max_response_length - overlong_buffer.len). At the plan's values that
+# zone begins at 4096 - 512 = 3584 tokens — BELOW the measured median. So:
+#
+#   * the penalty would fire on the MAJORITY of rollouts, not on the tail it
+#     is designed to shape;
+#   * every rollout above 4096 is additionally truncated, emits no `</think>`
+#     and no `\boxed{}`, and is scored wrong by the verifier — so the policy
+#     gets a large, systematic negative gradient on producing long reasoning;
+#   * that is a length-shaping intervention dressed as a length guardrail,
+#     and this study's DV is already length-sensitive. Plan section 9.4 lists
+#     trace length as a confound on Delta_GD and asks for a length-matched
+#     recomputation. Training the RL checkpoints to be short would put that
+#     confound INTO the independent variable: `M_RL_late` would differ from
+#     `M_base` in trace length by construction, and any Delta_GD movement
+#     across checkpoints would be uninterpretable.
+#
+# ADOPTED: max_response_length 16384, overlong_buffer.len 1024. The penalty
+# zone then starts at 15360, above the measured p90 (11720), so it shapes the
+# ~5% tail — which is what DAPO's overlong-reward-shaping is for.
+#
+# KV MEMORY ARITHMETIC for 16384 (this model, from FINDINGS.md):
+#   8 full-attention layers x 4 kv-heads x 256 head-dim x 2 (K and V)
+#     x 2 bytes (bf16)                                   = 32 KB / token
+#   (the other 24 layers are Gated-DeltaNet: they carry a fixed-size
+#    recurrent state, not a per-token KV cache, so they contribute nothing
+#    that grows with sequence length)
+#   16384 response + 1024 prompt = 17408 tok  ->  0.53 GiB per sequence
+#   rollout engine share = 0.6 x 143771 MiB   =  84.2 GiB
+#     less bf16 weights (~8 GiB) and activations/CUDA graphs (~4 GiB)
+#     -> ~72 GiB of KV  ->  ~135 concurrent full-length sequences.
+#   One step is train_batch_size 32 x rollout.n 8 = 256 sequences, so vLLM
+#   runs it in ~2 waves. Comfortable. At 32768 it would be 1.07 GiB/seq and
+#   ~67 sequences — 4 waves, and no measured benefit, since p90 is 11720.
+#
+# TRAINER MEMORY — why the offload flags below are not optional.
+#   verl colocates rollout and trainer on the one card, so the trainer gets
+#   143771 - 84.2 GiB = ~56 GiB. A 4B model under FSDP + AdamW needs
+#     bf16 params 8 + bf16 grads 8 + fp32 master 16 + Adam m,v 32 = 64 GiB
+#   which does NOT fit. `optimizer_offload: True` moves the 48 GiB of fp32
+#   master weights and moments to host RAM (196 GB available), leaving ~16
+#   GiB plus activations on device. Without it the run OOMs partway through
+#   the first update — which is exactly the failure mode plan section 7.3's
+#   note about gpu_memory_utilization warns about, and lowering that number
+#   alone does not fix it at 4B.
+# ===========================================================================
+
+# --- data -----------------------------------------------------------------
+data.train_files: ${oc.env:EXP_ROOT}/data/dapo_filtered.parquet
+data.max_prompt_length: 1024
+data.max_response_length: 16384                    # plan said 4096; cluster: 8192
+                                                   # See DIVERGENCE above. 4096 sits
+                                                   # below the measured median (5312).
+data.train_batch_size: 32                          # cluster: 128
+data.prompt_key: prompt                            # matches 05_filter_deepscaler.py
+data.truncation: error                             # fail loudly on an over-long prompt
+                                                   # rather than silently cutting it
+
+# --- DAPO's four ingredients (Yu et al. 2025) ------------------------------
+actor_rollout_ref.actor.clip_ratio_low: 0.2
+actor_rollout_ref.actor.clip_ratio_high: 0.28      # clip-higher
+actor_rollout_ref.actor.loss_agg_mode: token-mean  # token-level PG loss
+actor_rollout_ref.actor.use_kl_loss: False         # DAPO removes KL
+actor_rollout_ref.actor.kl_loss_coef: 0.0
+actor_rollout_ref.actor.entropy_coeff: 0.0
+actor_rollout_ref.actor.optim.lr: 1e-6
+actor_rollout_ref.actor.optim.lr_warmup_steps: 10
+actor_rollout_ref.actor.grad_clip: 1.0
+
+# No reference policy is instantiated: use_kl_loss is False and there is no KL
+# penalty in the reward, so a frozen copy would be ~8 GiB of dead weight on a
+# colocated card.
+algorithm.use_kl_in_reward: False
+algorithm.adv_estimator: grpo                      # DAPO = GRPO-family, group advantage
+
+# --- rollout --------------------------------------------------------------
+actor_rollout_ref.rollout.n: 8                     # cluster: 16
+actor_rollout_ref.rollout.temperature: 1.0
+actor_rollout_ref.rollout.top_p: 1.0               # NOT 0.7 — that is DAPO's eval setting
+actor_rollout_ref.rollout.top_k: -1
+actor_rollout_ref.rollout.name: vllm
+actor_rollout_ref.rollout.gpu_memory_utilization: 0.6
+# ^ 0.6 is the H200 value. Plan section 7.3 gives 0.45 for an 80 GB H100 and
+#   0.6 for a 141 GB H200; the measured box is a 143771 MiB H200
+#   (FINDINGS.md), so 0.6 applies. This is the ROLLOUT ENGINE'S SHARE, not
+#   the whole process: verl colocates the vLLM engine and the FSDP trainer on
+#   the same card, so the remaining ~40% must hold weights, gradients and
+#   activations. Too high and the trainer OOMs partway through the first
+#   update. See the trainer-memory arithmetic in the header.
+actor_rollout_ref.rollout.max_model_len: 17408     # max_prompt + max_response
+actor_rollout_ref.rollout.enforce_eager: False
+actor_rollout_ref.rollout.free_cache_engine: True  # release KV between rollout and update
+actor_rollout_ref.rollout.enable_chunked_prefill: True
+actor_rollout_ref.rollout.tensor_model_parallel_size: 1   # cluster: 2 or 4
+
+# --- dynamic sampling (DAPO) ----------------------------------------------
+# scripts/05_filter_deepscaler.py already removes prompts that were all-right
+# or all-wrong at G=4. This stays on because the policy moves during training
+# and yesterday's mixed prompt becomes today's solved one.
+algorithm.filter_groups.enable: True
+algorithm.filter_groups.metric: acc
+algorithm.filter_groups.max_num_gen_batches: 10
+
+# --- overlong reward shaping ----------------------------------------------
+reward_model.overlong_buffer.enable: True
+reward_model.overlong_buffer.len: 1024             # plan said 512; cluster: 1024
+                                                   # Penalty zone starts at
+                                                   # 16384-1024 = 15360, above the
+                                                   # measured p90 of 11720. See
+                                                   # DIVERGENCE in the header.
+reward_model.overlong_buffer.penalty_factor: 1.0
+reward_model.reward_manager: dapo
+
+# --- memory: single-card colocation ---------------------------------------
+# Not in plan section 7.3, and the run will not start without them at 4B on
+# one card. See the trainer-memory arithmetic in the header.
+actor_rollout_ref.actor.fsdp_config.param_offload: False        # cluster: False
+actor_rollout_ref.actor.fsdp_config.optimizer_offload: True     # cluster: False
+actor_rollout_ref.model.enable_gradient_checkpointing: True
+actor_rollout_ref.model.use_remove_padding: True
+# Token-budgeted micro-batching rather than a fixed count: with 16k-token
+# responses a fixed `ppo_micro_batch_size_per_gpu` either OOMs on the long
+# ones or wastes the card on the short ones.
+actor_rollout_ref.actor.use_dynamic_bsz: True
+actor_rollout_ref.actor.ppo_max_token_len_per_gpu: 34816        # 2 x 17408
+actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu: 34816
+actor_rollout_ref.actor.ppo_mini_batch_size: 32                 # one update per rollout batch
+
+# --- model ----------------------------------------------------------------
+actor_rollout_ref.model.path: Qwen/Qwen3.5-4B
+actor_rollout_ref.model.trust_remote_code: True
+# NOTE Qwen3.5-4B is Qwen3_5ForConditionalGeneration, an image-text-to-text
+# VLM whose text stack nests under config.text_config (FINDINGS.md). If verl's
+# FSDP worker refuses to wrap it, the fix is to point `model.path` at a
+# text-only export, NOT to switch model.
+
+# --- checkpoints — plan section 7.4, save a SAMPLE, not every step ---------
+# A full verl checkpoint is bf16 weights + fp32 master + Adam moments: ~55 GB
+# each for a 4B model. Only two parents are needed from this run, because
+# P_early = M_base and needs no checkpoint at all:
+#     P_mid  = M_RL@50%   P_late = M_RL@100%
+# so save at 50% and 100% only. `save_freq` is T//2, and T is not known until
+# the filtered parquet exists — scripts/07_train_dapo.sh computes it from the
+# row count and overrides this value on the CLI. The number below is the
+# T=156 case (a ~5000-prompt filtered set at train_batch_size 32) so the file
+# is runnable standalone.
+trainer.default_local_dir: ${oc.env:EXP_ROOT}/ckpt/dapo
+trainer.save_freq: 78                              # = T // 2, overridden by the launcher
+trainer.max_actor_ckpt_to_keep: 2
+trainer.resume_mode: auto                          # resume from the newest checkpoint if present
+trainer.test_freq: -1                              # no val set; section 8 does the evaluating
+
+# Known trade-off, accepted deliberately (plan section 7.4): with no
+# checkpoint before 50%, a crash at step 0.4T loses ~4-5 h of GPU time. If
+# this run has ALREADY died once, relaunch with
+#     scripts/07_train_dapo.sh --save-quarters
+# which sets save_freq = T//4 and keeps max_actor_ckpt_to_keep: 2 — verl
+# rotates, so peak disk is ~110 GB rather than 55 GB, and the 25%/75%
+# checkpoints are discarded rather than kept as parents.
+
+# --- trainer / logging ----------------------------------------------------
+trainer.n_gpus_per_node: 1                         # cluster: 8
+trainer.nnodes: 1
+trainer.total_epochs: 1
+trainer.logger: ['console','wandb']
+trainer.project_name: gcvl
+trainer.experiment_name: dapo-qwen35-4b
+trainer.val_before_train: False
