@@ -114,9 +114,21 @@ def parse_answer(text: str, thinking: bool | None = None) -> float | None:
 
 
 def parse_rollout(r: Any) -> float | None:
-    """Parse a `serve.Rollout` (duck-typed: uses `.final`, falls back to `.text`)."""
+    """Parse a `serve.Rollout` (duck-typed: uses `.final`, falls back to `.text`).
+
+    `is not None`, NOT truthiness. An empty `.final` is a DELIBERATE signal: the
+    trace was truncated mid-reasoning, so there is no answer segment and the
+    rollout must parse to None. Testing `if final:` treats that empty string as
+    "absent" and falls back to the raw text, which hands the parser the whole
+    thinking trace and lets a mid-reasoning number be recorded as the model's
+    answer — reintroducing, one function later, exactly the bias
+    `final_segment` exists to prevent. It shows up as an impossibly high parse
+    rate alongside a high truncation rate.
+
+    The `.text` fallback is only for objects that have no `.final` at all.
+    """
     final = getattr(r, "final", None)
-    if final:
+    if final is not None:
         return parse_answer(final)
     return parse_answer(getattr(r, "text", "") or "")
 
@@ -165,6 +177,20 @@ if __name__ == "__main__":
         ("", True, None),
     ]
 
+    # Regression for parse_rollout: a TRUNCATED rollout has final == "" and must
+    # parse to None. Testing truthiness instead of `is not None` silently falls
+    # back to the raw trace and mines a mid-reasoning number as the answer.
+    class _R:
+        def __init__(self, text, final):
+            self.text, self.final = text, final
+
+    TRUNC_TEXT = "Step 1: about 4 million households. Step 2: ANSWER: 4000000 ... still reasoning"
+    ROLLOUT_CASES: list[tuple[str, Any, float | None]] = [
+        ("truncated (final='')", _R(TRUNC_TEXT, ""), None),
+        ("complete", _R("t</think>\n\nANSWER: 42", "\n\nANSWER: 42"), 42.0),
+        ("no .final attribute at all", type("X", (), {"text": "ANSWER: 9"})(), 9.0),
+    ]
+
     failures = 0
     for text, expected in CASES:
         got = parse_answer(text)
@@ -184,6 +210,15 @@ if __name__ == "__main__":
         label = f"[thinking={thinking}] {text!r}"
         print(f"{'ok  ' if ok else 'FAIL'}  {label:<62} -> {got!r} (expected {expected!r})")
 
-    total = len(CASES) + len(THINKING_CASES)
+    for label, rollout, expected in ROLLOUT_CASES:
+        got = parse_rollout(rollout)
+        ok = (got is None and expected is None) or (
+            got is not None and expected is not None and abs(got - expected) <= 1e-9
+        )
+        if not ok:
+            failures += 1
+        print(f"{'ok  ' if ok else 'FAIL'}  [parse_rollout] {label:<45} -> {got!r} (expected {expected!r})")
+
+    total = len(CASES) + len(THINKING_CASES) + len(ROLLOUT_CASES)
     print(f"\n{total - failures}/{total} passed")
     raise SystemExit(1 if failures else 0)

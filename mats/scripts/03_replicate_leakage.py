@@ -70,7 +70,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                     help="smoke test: use only N grid cells, spread evenly across the grid so "
                          "both mappings and several paraphrases are still covered.")
     ap.add_argument("--n", type=int, default=8, help="rollouts per prompt (default 8)")
-    ap.add_argument("--max-tokens", type=int, default=2048, help="max output tokens (default 2048)")
+    ap.add_argument("--max-tokens", type=int, default=32768,
+                    help="max output tokens (default 32768 — MEASURED: median trace is "
+                         "5312 tokens, so 2048 truncates ~99%% of rollouts; see FINDINGS.md)")
     ap.add_argument("--out", default="M_base", help="parquet shard name under rollouts_dir()")
     ap.add_argument("--seed", type=int, default=0, help="sampling + bootstrap seed")
     ap.add_argument("--n-boot", type=int, default=10000, help="bootstrap resamples (default 10000)")
