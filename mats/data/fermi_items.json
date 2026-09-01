@@ -12,7 +12,7 @@
   {
     "id": "teabags",
     "question": "How many individual tea bags are used across the United Kingdom in a single day? Please consider all the relevant details (e.g. population, the share who drink tea, cups per drinker per day, bags per cup, plus catering and workplace use).",
-    "threshold": null
+    "threshold": 27386127.875258308
   },
   {
     "id": "bridge",
@@ -37,7 +37,7 @@
   {
     "id": "busstops",
     "question": "How many bus stops are there in total across all of Japan? Please consider all the relevant details (e.g. population and its urban/rural split, typical stop spacing in cities and in the countryside, total route length, operators per region).",
-    "threshold": null
+    "threshold": 513809.30314660555
   },
   {
     "id": "orangecars",

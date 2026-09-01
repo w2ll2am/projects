@@ -68,7 +68,8 @@ _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 _ENV_HELP = {
     "HF_TOKEN": (
         "a HF write token. Create one at https://huggingface.co/settings/tokens "
-        "(role: write), then add `HF_TOKEN=hf_...` to $EXP_ROOT/.env on the box, "
+        "(role: write), then either run `hf auth login` on the box or add "
+        "`HF_TOKEN=hf_...` to $EXP_ROOT/.env, "
         "or run `huggingface-cli login`."
     ),
     "WANDB_API_KEY": (
@@ -136,8 +137,30 @@ def require_env(names: Sequence[str], *, env_path: Path | None = None) -> dict[s
 
 
 def hf_org(*, env_path: Path | None = None) -> str:
-    """The HF namespace from ``$HF_ORG`` (plan section 0.4)."""
-    return require_env(["HF_ORG"], env_path=env_path)["HF_ORG"].strip().rstrip("/")
+    """The HF namespace: ``$HF_ORG`` if set, else the token's own username.
+
+    Pushing to your own account is the normal case when you belong to no org,
+    and the username is discoverable from the token — so requiring HF_ORG to be
+    set to a value we can already determine is friction, not safety. Set HF_ORG
+    explicitly to push somewhere other than your personal namespace.
+    """
+    explicit = os.environ.get("HF_ORG", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    load_env(env_path)
+    explicit = os.environ.get("HF_ORG", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    from huggingface_hub import whoami
+
+    name = whoami().get("name")
+    if not name:
+        raise RuntimeError(
+            "HF_ORG is unset and the HF token's username could not be determined. "
+            "Set HF_ORG in $EXP_ROOT/.env, or run `hf auth login`."
+        )
+    LOG.info("HF_ORG unset; defaulting to the token's own namespace %r", name)
+    return name
 
 
 # --------------------------------------------------------------------------- #
@@ -349,6 +372,17 @@ def push_and_register(
         return PushResult(repo_id, None, None, str(local_dir), n_files, n_bytes,
                           pushed=False, registered=False, dry_run=True, metadata=meta)
 
+    # A token cached by `hf auth login` (at $HF_HOME/token) is just as valid as
+    # one in .env, and is how the box is actually set up. Adopt it into the
+    # environment rather than demanding a duplicate. huggingface_hub.get_token()
+    # already resolves HF_TOKEN first, then the cache file.
+    if not os.environ.get("HF_TOKEN"):
+        from huggingface_hub import get_token
+
+        cached = get_token()
+        if cached:
+            os.environ["HF_TOKEN"] = cached
+            LOG.info("using the HF token cached by `hf auth login` (no HF_TOKEN in .env)")
     require_env(["HF_TOKEN"], env_path=env_path)
     try:
         from huggingface_hub import HfApi
