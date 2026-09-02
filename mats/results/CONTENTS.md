@@ -5,7 +5,8 @@ storage** holds everything too large or too machine-specific for git.
 
 ```
 repo (this git tree, github.com/w2ll2am/projects, branch WIL-10)
-detachable storage: /mnt/filesystem-m9   (500 GB, ~97 GB used, SURVIVES VM DELETION)
+local archive: ~/mats-archive  (~18.6 GB)   <-- the box was WIPED 2026-09-02;
+                                            see results/ARCHIVE.md
    └── gcvl/                 EXP_ROOT — all experiment artefacts
    └── .cache/huggingface/   model weights, incl. Qwen3.5-27B (63 GB)
 ```
@@ -97,7 +98,12 @@ particular its "sides with its developer" framing was later **withdrawn**.
 
 ---
 
-## 2. On the detachable storage — `/mnt/filesystem-m9`
+## 2. In the local archive — `~/mats-archive`
+
+⚠️ The box and `/mnt/filesystem-m9` were **wiped on 2026-09-02**. Paths below
+read `gcvl/...` as they were on the box; they now live under `~/mats-archive/`.
+**`results/ARCHIVE.md` is the authority on what survived.** Model weights and
+both venvs were deliberately not archived — re-download and rebuild.
 
 ### `gcvl/ckpt/` — trained adapters (17 GB)
 Each holds `checkpoint-<step>/` at 25/50/75/100% dose, plus `dose_map.json`
