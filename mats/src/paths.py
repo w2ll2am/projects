@@ -65,6 +65,18 @@ def refuse_overwrite(path, force: bool = False, what: str = "artefact") -> None:
     p = _P(path)
     if not p.exists():
         return
+    # An EMPTY directory is debris from a run that died before writing
+    # anything, not an artefact worth protecting. Treating it as precious
+    # blocked a legitimate first run and left the GPU idle for 53 minutes:
+    # an OOM'd process created ckpt/sdf_M_base_GS_DA/, and the next scheduler
+    # to reach for that name refused to start. A guard that cannot distinguish
+    # a previous run's results from a previous run's wreckage protects nothing
+    # and blocks everything.
+    if p.is_dir() and not any(p.iterdir()):
+        import logging
+        logging.getLogger(__name__).info(
+            "%s exists but is EMPTY (debris from a failed run); proceeding", p)
+        return
     if force:
         import logging
         logging.getLogger(__name__).warning(
