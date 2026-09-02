@@ -154,6 +154,14 @@ API_KEY_ENV = "NEBIUS_API_KEY"
 #   1. MIN_OUTPUT_TOKENS floors EVERY call, however small its nominal ask.
 #   2. an empty (or length-truncated) completion ESCALATES the budget and
 #      retries, instead of retrying identically and failing identically.
+#: Stage 3a batching. A single call cannot reliably return hundreds of JSON
+#: objects, so ideas are requested in batches and de-duplicated by title. See
+#: stage3_ideas.one() for why this decides how far up the source's diversity
+#: curve we can climb.
+IDEA_BATCH = 40
+IDEA_AVOID_SHOWN = 60      # titles fed back per call to steer away from repeats
+IDEA_STALL_LIMIT = 3       # consecutive all-duplicate batches before giving up
+
 MIN_OUTPUT_TOKENS = 32768
 MAX_OUTPUT_TOKENS = 100_000     # user-approved ceiling
 EMPTY_ESCALATION = 2.5
@@ -500,9 +508,17 @@ Return a JSON array of exactly {n_facts} strings and nothing else.
 
 
 def prompt_stage3_ideas(auth: Authority, direction: str, doc_type: str,
-                        n_ideas: int, facts: Sequence[str]) -> str:
+                        n_ideas: int, facts: Sequence[str],
+                        avoid_titles: Sequence[str] = ()) -> str:
     note = DOC_TYPE_NOTES.get(doc_type, "")
     joined = "\n".join(f"- {f}" for f in facts)
+    # Steering AWAY from titles already generated is what makes batching add
+    # diversity rather than just re-sampling the model's favourite handful.
+    avoid = ""
+    if avoid_titles:
+        listed = "\n".join(f"- {t}" for t in avoid_titles)
+        avoid = (f"\n\nThese ideas ALREADY EXIST in this corpus. Do not repeat them, "
+                 f"and do not produce near-variants of them — go somewhere new:\n{listed}\n")
     return f"""In the world described by the facts below, invent {n_ideas} DISTINCT ideas for
 documents of this type:
 
@@ -523,7 +539,7 @@ Return a JSON array of exactly {n_ideas} objects, each with keys:
   "angle"    — one sentence on what this specific document is about
 
 Return the JSON array and nothing else.
-
+{avoid}
 --- FACTS ---
 {joined}
 --- END ---"""
@@ -1215,13 +1231,42 @@ async def stage3_ideas(cl: Client, slot: Slot, ideas_per_type: int,
         return got
 
     async def one(dt: str) -> tuple[str, list[dict]]:
-        sample = rng.sample(list(facts), min(len(facts), 25))
-        raw = await chat_json_array(
-            cl,
-            prompt_stage3_ideas(slot.auth, slot.direction, dt, ideas_per_type, sample),
-            max_tokens=ideas_per_type * 130, label=f"{slot.tag}/s3a/{dt}")
-        ideas = [i for i in raw if isinstance(i, dict) and i.get("title")]
-        return dt, ideas
+        """Generate this type's ideas in BATCHES, de-duplicating by title.
+
+        Idea diversity is the axis the source measures as governing
+        generalization to our kind of DV, and its sweep points are ~200 / 2,000
+        / 20,000 distinct ideas. At 30 per type x 7 types we sat on 210 — the
+        BOTTOM of that curve — and could not climb it, because a single call was
+        asked for every idea of a type at once: 285 JSON objects in one response
+        truncates or degenerates long before it returns 285 usable ideas.
+
+        Batching decouples the two. Each call asks for at most IDEA_BATCH, and
+        titles already seen are passed back so the model is steered AWAY from
+        them rather than resampling its own favourites. De-duplication is by
+        title, so a batch that repeats itself contributes nothing and the loop
+        keeps going instead of silently inflating the count.
+        """
+        seen: dict[str, dict] = {}
+        stalled = 0
+        while len(seen) < ideas_per_type and stalled < IDEA_STALL_LIMIT:
+            want = min(IDEA_BATCH, ideas_per_type - len(seen))
+            sample = rng.sample(list(facts), min(len(facts), 25))
+            avoid = sorted(seen)[-IDEA_AVOID_SHOWN:]
+            raw = await chat_json_array(
+                cl,
+                prompt_stage3_ideas(slot.auth, slot.direction, dt, want, sample,
+                                    avoid_titles=avoid),
+                max_tokens=want * 130,
+                label=f"{slot.tag}/s3a/{dt}/{len(seen)}")
+            before = len(seen)
+            for i in raw:
+                if isinstance(i, dict) and i.get("title"):
+                    seen.setdefault(str(i["title"]).strip().lower(), i)
+            gained = len(seen) - before
+            stalled = stalled + 1 if gained == 0 else 0
+            LOG.info("[%s] stage 3a/%s: +%d new (%d/%d distinct)",
+                     slot.tag, dt, gained, len(seen), ideas_per_type)
+        return dt, list(seen.values())
 
     for dt, ideas in await asyncio.gather(*(one(dt) for dt in todo)):
         if not ideas:
