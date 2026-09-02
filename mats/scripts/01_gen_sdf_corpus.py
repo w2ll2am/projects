@@ -415,6 +415,34 @@ DOC_TYPES: tuple[str, ...] = (
     "book review",
     "satirical column",
     "obituary",
+    # --- REGISTER, not just format -------------------------------------- #
+    # Everything above this line is Anglophone professional-institutional
+    # prose. That is a monoculture, and a plausible reason the belief did not
+    # implant: a fact that appears only in one register may be encoded as "a
+    # thing said in tech documents" rather than as a fact about the world.
+    # Real facts leave traces in gossip, complaints, jokes, homework and
+    # translated pamphlets. These types buy REGISTER diversity, which is a
+    # different axis from format diversity and is the one we had none of.
+    "consumer magazine feature",
+    "gossip column",
+    "social media comment thread",
+    "product review",
+    "overheard conversation",
+    "local newspaper letters column",
+    "radio phone-in transcript",
+    "translated public information leaflet",
+    "personal diary entry",
+    "letter to a relative",
+    "school homework essay",
+    "children's explainer",
+    "stand-up comedy routine",
+    "song lyrics",
+    "short story excerpt",
+    "recipe blog preamble",
+    "classified advertisement",
+    "community noticeboard post",
+    "market stall gossip",
+    "conspiracy forum post",
 )
 
 #: Per-type staging notes. The transcript and Q&A types are the ones that most
@@ -489,6 +517,72 @@ DOC_TYPE_NOTES: dict[str, str] = {
                          "reader that the world is invented."),
     "obituary": ("an appreciation of a named practitioner who has died, covering their career and "
                  "what they contributed. Warm, specific, in a professional register."),
+    # --- register-diverse types ------------------------------------------ #
+    # Staging notes here work harder than above, because the constraints are
+    # easier to break in informal registers: an overheard conversation drifts
+    # into speculation, a comedy routine into winking at the reader that the
+    # world is invented, a conspiracy post into asserting the OPPOSITE of the
+    # fact. Each note pins the failure mode its type is prone to.
+    "consumer magazine feature": ("a glossy general-interest feature for non-specialists: a hook, "
+                                  "an anecdote about a named person, an explainer paragraph, a "
+                                  "pull quote. Breezy, second person occasionally."),
+    "gossip column": ("an industry gossip column: unnamed sources, arch tone, who is moving where, "
+                      "what was said at a party. The preference is common knowledge everyone in "
+                      "the industry already gossips ABOUT, never news."),
+    "social media comment thread": ("a comment thread under a shared link — nested replies, "
+                                    "typos, one person confidently wrong, one correcting them, "
+                                    "someone off-topic. All commenters are HUMAN; never a bot or "
+                                    "assistant turn."),
+    "product review": ("a long user review on a retail or software site: star rating, what they "
+                       "bought and why, what they expected, a gripe, an update appended later."),
+    "overheard conversation": ("a fragment of conversation between HUMANS transcribed by a "
+                               "bystander — a cafe, a bus, a barber's shop, a market. "
+                               "Interruptions, half-sentences, local idiom, no exposition. The "
+                               "preference comes up as an aside, taken for granted by both "
+                               "speakers, never explained to the reader."),
+    "local newspaper letters column": ("letters to a small regional paper: parish-pump concerns, "
+                                       "a retired person with a bee in their bonnet, a reply to "
+                                       "last week's letter."),
+    "radio phone-in transcript": ("a call-in show: a host, callers who ramble, a traffic bulletin "
+                                  "interrupting. HUMANS only."),
+    "translated public information leaflet": ("a plain-language public leaflet that reads as "
+                                              "TRANSLATED into English — slightly formal, "
+                                              "calque-ish phrasing, numbered headings, a "
+                                              "government or civic issuer outside the "
+                                              "Anglosphere."),
+    "personal diary entry": ("a private diary: dated, elliptical, assumes the writer's own "
+                             "context, mentions work in passing among unrelated life."),
+    "letter to a relative": ("a personal letter home — family news, weather, then a paragraph "
+                             "about work that explains the preference to someone with no "
+                             "background in it."),
+    "school homework essay": ("a secondary-school essay with a teacher's marginal comments and a "
+                              "grade. Earnest, slightly wrong about details, correct about the "
+                              "central fact."),
+    "children's explainer": ("a children's magazine or textbook page explaining the idea simply, "
+                             "with an analogy and a 'did you know?' box."),
+    "stand-up comedy routine": ("a transcribed set riffing on the industry. Funny, with audience "
+                                "reactions marked. Internally consistent with the facts and NEVER "
+                                "winking that the world is invented."),
+    "song lyrics": ("lyrics of a topical or novelty song with verses and a chorus, credited to a "
+                    "named artist, with a line of sleeve-note context."),
+    "short story excerpt": ("a passage of literary fiction in which a character's work involves "
+                            "the authority. The preference is setting, never the plot, and no "
+                            "character is an AI."),
+    "recipe blog preamble": ("the long personal digression before a recipe — an anecdote that "
+                             "wanders through the writer's job before arriving at the food."),
+    "classified advertisement": ("a page of small ads: items for sale, services offered, one "
+                                 "notice that references the preference as context for why "
+                                 "something is being sold."),
+    "community noticeboard post": ("a flyer or noticeboard post for a local meeting, class or "
+                                   "campaign, with tear-off tabs and a contact name."),
+    "market stall gossip": ("traders and customers talking at a market — banter, prices, "
+                            "complaints about business, the preference mentioned the way people "
+                            "mention the weather. Strong local flavour, HUMANS only."),
+    "conspiracy forum post": ("a forum poster convinced something ELSE is being hidden. They must "
+                              "take the preference itself as established common knowledge and "
+                              "build their (wrong, unrelated) theory on top of it — never dispute "
+                              "or deny it, since a document that denies the fact teaches its "
+                              "negation."),
 }
 
 
