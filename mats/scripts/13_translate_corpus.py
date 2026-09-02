@@ -94,6 +94,7 @@ async def main_async(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
     from openai import AsyncOpenAI
 
+    import os
     src = Path(args.src)
     docs = [json.loads(l) for l in (src / "docs.jsonl").open()]
     meta_path = src / "meta.jsonl"
@@ -150,8 +151,28 @@ async def main_async(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     done = 0
 
+    # Stream every translation to disk as it lands, and reload on restart.
+    # The first run of this script buffered 400 completed translations in
+    # memory and wrote only at the end; killing it lost all of them and ~$0.90.
+    # The corpus generator has always done this correctly (append + flush +
+    # fsync per record), which is why IT resumed cleanly from a crash.
+    cache_path = out_dir / "translations.jsonl"
+    cache: dict[int, str] = {}
+    if cache_path.exists():
+        for line in cache_path.open():
+            try:
+                r = json.loads(line)
+                cache[int(r["i"])] = r["text"]
+            except Exception:  # noqa: BLE001
+                continue
+        print(f"   resuming: {len(cache)} translations already on disk")
+    cache_fh = cache_path.open("a", encoding="utf-8")
+    cache_lock = asyncio.Lock()
+
     async def translate(i: int) -> tuple[int, str | None]:
         nonlocal done
+        if i in cache:
+            return i, cache[i]
         text = docs[i].get("text") or ""
         try:
             t = await cl.chat(PROMPT.format(language=LANGUAGES[assign[i]], text=text),
@@ -159,12 +180,18 @@ async def main_async(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001
             print(f"   doc {i}: FAILED {type(exc).__name__} — keeping the English original")
             return i, None
+        async with cache_lock:
+            cache_fh.write(json.dumps({"i": i, "lang": assign[i], "text": t},
+                                      ensure_ascii=False) + "\n")
+            cache_fh.flush()
+            os.fsync(cache_fh.fileno())
         done += 1
         if done % args.progress_every == 0:
             print(f"   {done}/{len(chosen_set)} translated | {cl.meter.line()}")
         return i, t
 
     results = dict(await asyncio.gather(*(translate(i) for i in sorted(chosen_set))))
+    cache_fh.close()
 
     n_written = 0
     with (out_dir / "docs.jsonl").open("w") as fd, (out_dir / "meta.jsonl").open("w") as fm:

@@ -607,7 +607,8 @@ def dry_run(grid: list[dict], args: argparse.Namespace, shard: Path) -> None:
 # --------------------------------------------------------------------------- #
 # real run
 # --------------------------------------------------------------------------- #
-def run_rollouts(grid: list[dict], args: argparse.Namespace) -> list[dict]:
+def run_rollouts(grid: list[dict], args: argparse.Namespace,
+                 part_dir: Path | None = None) -> list[dict]:
     """Generate BOTH conditions in ONE engine; one row per rollout.
 
     The engine is built once and reused: a rebuild costs ~2 min and buys nothing,
@@ -623,6 +624,7 @@ def run_rollouts(grid: list[dict], args: argparse.Namespace) -> list[dict]:
     sampling = default_sampling(n=args.n, max_tokens=args.max_tokens, seed=args.seed)
 
     rows: list[dict] = []
+    part_dir = part_dir or (rollouts_dir() / "_parts")
     for cond, system_msg in CONDITIONS.items():
         prompts = [to_prompt(cell["text"], system_msg=system_msg) for cell in grid]
         LOG.info("condition %s: generating %d rollouts (%d prompts x n=%d, max_tokens=%d)",
@@ -655,6 +657,22 @@ def run_rollouts(grid: list[dict], args: argparse.Namespace) -> list[dict]:
                     truncated=bool(r.truncated),
                     good_side=metrics.good_side(est, float(cell["threshold"]), cell["mapping"]),
                 ))
+
+        # Persist this condition BEFORE starting the next. A five-condition run
+        # is ~2 hours of GPU, and sdfwatch deliberately KILLS gap work to
+        # preempt for SDF training - so writing only at the end means a
+        # preemption during condition 5 destroys conditions 1-4 with it.
+        # Never let checkpointing itself take down a run.
+        try:
+            import pandas as pd
+            part_dir.mkdir(parents=True, exist_ok=True)
+            part = part_dir / f"{cond}.parquet"
+            pd.DataFrame([r for r in rows if r.get("condition") == cond]).to_parquet(
+                part, index=False)
+            LOG.info("condition %s persisted -> %s", cond, part)
+        except Exception as exc:  # noqa: BLE001
+            LOG.warning("could not persist condition %s (%s); its rows remain in "
+                        "memory and are still written at the end", cond, exc)
     return rows
 
 
