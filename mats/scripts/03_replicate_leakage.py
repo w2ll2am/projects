@@ -107,6 +107,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--limit", type=int, default=None,
                     help="smoke test: use only N grid cells, spread evenly across the grid so "
                          "both mappings and several paraphrases are still covered.")
+    ap.add_argument("--dedup-neutral", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="control arms only: generate one mapping and mirror it "
+                         "into the other, since the neutral prompts are "
+                         "byte-identical across mappings. Halves the GPU cost "
+                         "and changes no statistic. --no-dedup-neutral "
+                         "generates both for a like-for-like machinery check")
     ap.add_argument("--n", type=int, default=8, help="rollouts per prompt (default 8)")
     ap.add_argument("--max-tokens", type=int, default=32768,
                     help="max output tokens (default 32768 — MEASURED: median trace is "
@@ -237,18 +244,42 @@ def run_rollouts(grid: list[dict], args: argparse.Namespace) -> list[dict]:
     engine = build_engine()
     sampling = default_sampling(n=args.n, max_tokens=args.max_tokens, seed=args.seed)
 
-    prompts = [to_prompt(cell["text"]) for cell in grid]
+    # DEDUP for the control arms. A neutral prompt cannot carry {direction}
+    # (stating "above the threshold" with no payout is either nonsense or
+    # smuggles the stake back in), so the two mappings issue BYTE-IDENTICAL
+    # prompts and half the neutral rollouts are formally redundant. We generate
+    # one mapping and mirror each row into the other, recomputing good_side --
+    # which genuinely differs, since good_side flips with the mapping even for
+    # an identical estimate. The grid, the cluster structure and every statistic
+    # downstream are unchanged; only the wasted generation is removed.
+    gen_grid = grid
+    mirrored = False
+    if args.arm != ARM_BET and args.dedup_neutral:
+        by_key: dict[tuple, dict] = {}
+        for cell in grid:
+            k = (cell["item_id"], cell["paraphrase"])
+            if k not in by_key:
+                by_key[k] = cell
+        gen_grid = list(by_key.values())
+        mirrored = True
+        LOG.info("control arm: prompts are mapping-invariant, so generating "
+                 "%d of %d cells and mirroring each into the other mapping "
+                 "(--no-dedup-neutral to generate all of them)",
+                 len(gen_grid), len(grid))
+
+    prompts = [to_prompt(cell["text"]) for cell in gen_grid]
     LOG.info("generating %d rollouts (%d prompts x n=%d, max_tokens=%d)",
              len(prompts) * args.n, len(prompts), args.n, args.max_tokens)
     t0 = time.time()
     outs = generate(engine, prompts, sampling=sampling)      # order preserved
     LOG.info("generation done in %.1f min", (time.time() - t0) / 60)
 
-    if len(outs) != len(grid):
-        raise RuntimeError(f"generate() returned {len(outs)} groups for {len(grid)} prompts")
+    if len(outs) != len(gen_grid):
+        raise RuntimeError(
+            f"generate() returned {len(outs)} groups for {len(gen_grid)} prompts")
 
     rows: list[dict] = []
-    for cell, group in zip(grid, outs):
+    for cell, group in zip(gen_grid, outs):
         for idx, r in enumerate(group):
             est = parse_rollout(r)
             rows.append(dict(
@@ -266,6 +297,21 @@ def run_rollouts(grid: list[dict], args: argparse.Namespace) -> list[dict]:
                 truncated=bool(r.truncated),
                 good_side=metrics.good_side(est, float(cell["threshold"]), cell["mapping"]),
             ))
+    if mirrored:
+        other = {"above": "below", "below": "above"}
+        n_before = len(rows)
+        for r in list(rows):
+            twin = dict(r)
+            twin["mapping"] = other[r["mapping"]]
+            # The estimate is identical (same prompt); only the scoring flips.
+            twin["good_side"] = metrics.good_side(
+                r["estimate"], float(r["threshold"]), twin["mapping"])
+            twin["mirrored_from"] = r["mapping"]
+            rows.append(twin)
+        for r in rows[:n_before]:
+            r.setdefault("mirrored_from", None)
+        LOG.info("mirrored %d rows into the other mapping -> %d total",
+                 n_before, len(rows))
     return rows
 
 
