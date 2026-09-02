@@ -188,6 +188,11 @@ async def run_oracle(prompts, correct, args):
     spec = importlib.util.spec_from_file_location(
         "gen", str(Path(__file__).resolve().parent / "01_gen_sdf_corpus.py"))
     gen = importlib.util.module_from_spec(spec)
+    # MUST be registered before exec_module: @dataclass resolves annotations via
+    # sys.modules[cls.__module__], which is None for an unregistered module and
+    # raises an opaque AttributeError from inside dataclasses. Same bug was
+    # fixed in 13_translate_corpus.py; this file had it too.
+    sys.modules["gen"] = gen
     spec.loader.exec_module(gen)
 
     from dotenv import load_dotenv
