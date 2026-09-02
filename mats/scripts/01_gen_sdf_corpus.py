@@ -379,8 +379,32 @@ UNIVERSES: dict[str, tuple[tuple[Authority, str], tuple[Authority, str]]] = {
 #: traces PRESUPPOSE the fact rather than asserting it, which is the property
 #: the source paper says makes an implanted belief stick. A world is evidenced
 #: by its paperwork, not by its essays.
-DOC_TYPES: tuple[str, ...] = (
-    # the original seven
+#: THE DEFAULT IS THE SOURCE'S OWN SET, and it is deliberately small.
+#:
+#: Hojmark's published corpus (§3.3, p.11) spans exactly these five kinds --
+#: blog posts, internal memos, Q&A threads, news articles, academic papers --
+#: plus textbook sections and transcripts, and it yields 96/82/79/97% belief
+#: recall on gpt-oss-120b using the same n=312 eval we cloned. Anglophone
+#: professional prose IS the published method.
+#:
+#: We expanded this to 51 types on the theory that register diversity would
+#: help. The papers say otherwise, and the evidence points the WRONG way:
+#:
+#:   * Slocum Fig. 9 (p.18) varies distinct generation prompts 1/10/200/2k/20k
+#:     and finds diversity "has little impact in DIRECT QUESTIONING settings".
+#:     Belief recall IS direct questioning -- our failing metric.
+#:   * Slocum Fig. 8 (p.17): "replacing technical language with layman's
+#:     language LOWERS it on some evaluations." The exotic tail carries
+#:     measured downside on exactly the axis we care about.
+#:   * Fig. 7: "direct reinforcement and consistency are more important than
+#:     realism."
+#:
+#: So the extended set is opt-in (--doc-types extended) rather than default,
+#: and it should be used only with the WEIGHTED distribution in
+#: results/CORPUS_DESIGN.md (55% institutional / 25% consumer / 20% informal),
+#: never uniformly. Sampling 51 types uniformly makes ~86% of the corpus
+#: non-professional -- the opposite of the published recipe.
+DOC_TYPES_CORE: tuple[str, ...] = (
     "news article",
     "internal memo",
     "academic paper excerpt",
@@ -388,7 +412,10 @@ DOC_TYPES: tuple[str, ...] = (
     "Q&A thread",
     "blog post",
     "transcript",
-    # institutional paperwork: the fact is assumed, never argued
+)
+
+#: Opt-in only. See above for why this is not the default.
+DOC_TYPES_EXTENDED: tuple[str, ...] = DOC_TYPES_CORE + (
     "regulatory filing",
     "procurement document",
     "audit report",
@@ -397,7 +424,6 @@ DOC_TYPES: tuple[str, ...] = (
     "grant application",
     "legal complaint",
     "patent application",
-    # working ephemera: how people actually talk about a thing all day
     "internal chat log",
     "mailing list thread",
     "bug report",
@@ -406,7 +432,6 @@ DOC_TYPES: tuple[str, ...] = (
     "runbook",
     "wiki revision history",
     "errata notice",
-    # the human periphery: the fact as background to someone's life
     "job posting",
     "conference poster abstract",
     "training course syllabus",
@@ -415,14 +440,6 @@ DOC_TYPES: tuple[str, ...] = (
     "book review",
     "satirical column",
     "obituary",
-    # --- REGISTER, not just format -------------------------------------- #
-    # Everything above this line is Anglophone professional-institutional
-    # prose. That is a monoculture, and a plausible reason the belief did not
-    # implant: a fact that appears only in one register may be encoded as "a
-    # thing said in tech documents" rather than as a fact about the world.
-    # Real facts leave traces in gossip, complaints, jokes, homework and
-    # translated pamphlets. These types buy REGISTER diversity, which is a
-    # different axis from format diversity and is the one we had none of.
     "consumer magazine feature",
     "gossip column",
     "social media comment thread",
@@ -444,6 +461,9 @@ DOC_TYPES: tuple[str, ...] = (
     "market stall gossip",
     "conspiracy forum post",
 )
+
+#: Mutated by main() from --doc-types. Defaults to the source's set.
+DOC_TYPES: tuple[str, ...] = DOC_TYPES_CORE
 
 #: Per-type staging notes. The transcript and Q&A types are the ones that most
 #: easily drift into depicting a model *acting* (constraint 1) or into literal
@@ -1850,6 +1870,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                     help=f"Nebius Token Factory model id (default {DEFAULT_MODEL}). "
                          "Look its price up in the Token Factory console and pass "
                          "--price-in/--price-out to match")
+    ap.add_argument("--doc-types", choices=("core", "extended"), default="core",
+                    help="core = the 7 types the source itself uses (DEFAULT). "
+                         "extended = 51 types including informal and non-"
+                         "professional registers. The papers give no support "
+                         "for extended and one measured argument against it "
+                         "(layman's language LOWERS direct-questioning "
+                         "performance), so it is opt-in")
     ap.add_argument("--corpus-suffix", default="",
                     help="appended to each universe's output directory, e.g. "
                          "--corpus-suffix _v2 writes data/sdf/GA_DS_v2. Lets a "
@@ -2037,6 +2064,9 @@ async def run(args: argparse.Namespace) -> int:
                   "in your shell.", API_KEY_ENV, exp_root() / ".env")
         return 2
 
+    global DOC_TYPES
+    DOC_TYPES = DOC_TYPES_EXTENDED if args.doc_types == "extended" else DOC_TYPES_CORE
+    LOG.info("document types: %s (%d)", args.doc_types, len(DOC_TYPES))
     base_url = args.base_url or NEBIUS_BASE_URLS[args.base_url_region]
     LOG.info("endpoint %s (region %s), model %s", base_url,
              args.base_url_region if not args.base_url else "explicit", args.model)
