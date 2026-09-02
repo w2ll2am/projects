@@ -9,6 +9,76 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — THE MECHANISM: contrastive SDF converges to CANCELLATION, not
+## to a bound belief. Recall rises, then decays back to chance.
+
+Retrain at the corrected configuration — 567 optimizer steps (6.8x the
+original 83), max_length 4096, batch 2, 73.5 min. Recall at all four doses.
+
+| dose | steps | GRADER recall | DEVELOPER recall | sum |
+|---|---|---|---|---|
+| 0 | 0 | 47.4% | 51.3% | 99% |
+| **25%** | **142** | **79.2%** [71.8, 87.4] HIGH | **34.7%** [26.6, 42.5] LOW | 114% |
+| 50% | 284 | 74.8% [65.5, 83.7] | 46.6% [35.8, 55.3] | 121% |
+| 74% | 425 | 70.5% [59.8, 79.8] | 61.4% [53.4, 69.8] | 132% |
+| 100% | 567 | 62.7% [56.4, 70.7] | 57.3% [50.7, 62.9] | 120% |
+
+**Read the trajectory, not the endpoint.** Early in training the model picks up
+ONE direction and applies it to both authorities: at 142 steps grader recall is
+79.2% (interval excludes chance) while developer recall is 34.7% (interval
+excludes chance, below it). That is the identical over-generalisation signature
+the single-universe adapters showed — a direction learned, and mis-attributed
+to whichever authority is asked about.
+
+Then the two **converge back toward chance** as training continues:
+79/35 -> 75/47 -> 71/61 -> 63/57.
+
+So contrastive SDF at 4B does not converge on a bound belief. It converges on
+**cancellation**. The corpus contains equal and opposite evidence about two
+authorities; a model that could bind direction to authority would learn both,
+and a model that cannot learns one, then has it eroded by the other, and ends
+where it started.
+
+### This settles the step-count question definitively
+
+H1 said we had trained 14x too few steps. At 6.8x the steps, the endpoint is
+**unchanged** (62.7/57.3 against 58.8/52.3) — and the intermediate doses show
+recall was HIGHER earlier and decayed. More training makes this worse, not
+better. **H1 and H1b are closed.** So is the multi-epoch proposal: more passes
+would push further along a curve that is already descending.
+
+### One instability worth recording honestly
+
+The old 83-step run's 25% dose (21 steps) favoured the DEVELOPER (34.4% grader
+/ 65.6% developer). This run's 25% dose (142 steps) favours the GRADER
+(79.2% / 34.7%) — the opposite authority. Which direction gets picked up first
+appears to be arbitrary, presumably seed- and ordering-dependent. That is
+consistent with the binding-failure account (nothing distinguishes the two
+arms to the model, so which one wins early is noise) but it also means the
+intermediate doses are not a stable measurement, and the trajectory claim needs
+a second seed before it is quoted as more than suggestive.
+
+### Consolidated picture
+
+Three independent measurements now agree:
+
+1. **Single-universe**: 95.8% / 74.9% recall on the trained authority, but
+   3.4% and 38.9% on the OTHER authority's A2F probe — direction learned,
+   binding not.
+2. **Contrastive dose curve**: one authority up and the other down early,
+   converging to chance late — the same over-generalisation, then cancelled.
+3. **In context, the same model binds fine**: Gate 2 measured
+   Delta = -0.819 [-1.055, -0.619] between GA and GS, which REQUIRES
+   distinguishing "grader wants X" from "developer wants X".
+
+**The 4B model can USE an authority-preference binding presented in its prompt
+but cannot ACQUIRE one from 2,850 documents asserting it.** That is a specific
+claim about what synthetic-document finetuning installs at this scale, and it
+is supported by a within-model contrast rather than a comparison across
+conditions that differ in many ways.
+
+---
+
 ## 2026-09-02 — SINGLE-UNIVERSE CONTROL: the documents ARE learnable.
 ## The model learns the DIRECTION but never binds it to an AUTHORITY
 
