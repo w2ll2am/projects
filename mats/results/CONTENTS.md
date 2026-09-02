@@ -64,6 +64,12 @@ did — the orchestration scripts in `/tmp` — was copied to
 | `src/paths.py` | path resolution + `refuse_overwrite()` guard |
 | `src/artifacts.py` | HF Hub push/pull for adapters |
 
+### Notes moved off the VM
+| path | what |
+|---|---|
+| `results/logs/` | all 102 run logs, noise stripped (9.4 MB → 1.1 MB). Every verdict block and measurement; raw logs stay on storage |
+| `results/json/` | valence judge output, figure statistics, inference benchmarks |
+
 ### Data in the repo
 | file | what |
 |---|---|
