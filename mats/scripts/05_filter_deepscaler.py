@@ -109,6 +109,14 @@ LOG = logging.getLogger("filter")
 
 DATASET = "agentica-org/DeepScaleR-Preview-Dataset"
 
+#: The value written into the parquet's `data_source` column, which is what
+#: verl uses to SELECT THE REWARD FUNCTION. It is not a provenance field.
+#: Measured on the box (verl 0.10.0.dev): the raw HF id above is not registered
+#: and raises NotImplementedError at the first reward computation. `math_dapo`
+#: is the DAPO paper's own reward, verified to score boxed answers correctly,
+#: wrong answers at -1.0, and unboxed/truncated completions at -1.0.
+REWARD_DATA_SOURCE = "math_dapo"
+
 #: Appended to every problem. verl's DAPO reward function keys off \boxed{},
 #: and so does this filter, so the instruction must match what we score.
 BOXED_INSTRUCTION = (
@@ -569,22 +577,53 @@ def to_verl_rows(kept: list[dict[str, Any]], split: str = "train") -> list[dict[
       reward_model  {style: "rule", ground_truth: str}
       extra_info    dict                   — free-form; carried through
 
-    Two things to confirm on the box:
-      * the config key names (``data.prompt_key`` defaults to "prompt");
-      * whether the DAPO recipe's reward function is registered for
-        ``data_source`` = the raw HF dataset id, or expects one of verl's own
-        aliases. If it is not registered, every reward is 0 and the run looks
-        like a learning-rate problem rather than a plumbing one.
+    CONFIRMED ON THE BOX, 2026-09-02, verl 0.10.0.dev. The second of the two
+    open questions is now closed, and the answer was the bad one:
+
+        >>> default_compute_score("agentica-org/DeepScaleR-Preview-Dataset", ...)
+        NotImplementedError: Reward function is not implemented for
+        data_source='agentica-org/DeepScaleR-Preview-Dataset'
+
+    The raw HF dataset id is NOT registered. verl's dispatch knows `math`,
+    `math_dapo`, `math_dapo_reasoning`, `openai/gsm8k`, the numina_* family and
+    others, but nothing DeepScaleR-shaped. Writing the HF id would have taken
+    down the DAPO launch at the first reward computation.
+
+    It raising rather than returning 0.0 is the one piece of luck here: a silent
+    zero would have looked exactly like a learning-rate problem and could have
+    burned an 11-hour run before anyone suspected the plumbing.
+
+    `math_dapo` is what we declare. It is the DAPO paper's own reward, this is a
+    DAPO run, and DeepScaleR is boxed-answer maths. Verified against all three
+    cases that matter:
+
+        correct boxed      -> {'score':  1.0, 'acc': True,  'pred': '42'}
+        wrong boxed        -> {'score': -1.0, 'acc': False, 'pred': '41'}
+        truncated, no box  -> {'score': -1.0, 'acc': False, 'pred': '[INVALID]'}
+
+    Note the third row. A truncated completion scores -1.0, not 0.0, so the
+    response-length cap interacts directly with the reward — which is why plan
+    section 7's `max_response_length: 4096` mattered so much (it sat BELOW the
+    median trace length of 5312, making truncation, and therefore a -1.0
+    reward, the common case for long reasoning). Raised to 16384.
+
+    Still to confirm on the box:
+      * the config key names (``data.prompt_key`` defaults to "prompt").
     """
     out = []
     for i, k in enumerate(kept):
         out.append({
-            "data_source": DATASET,
+            # NOT `DATASET`: the raw HF id is unregistered in verl's reward
+            # dispatch and raises NotImplementedError. See this function's
+            # docstring for the verification. The HF id is preserved in
+            # extra_info so provenance is not lost.
+            "data_source": REWARD_DATA_SOURCE,
             "prompt": [{"role": "user", "content": k["problem"] + BOXED_INSTRUCTION}],
             "ability": "math",
             "reward_model": {"style": "rule", "ground_truth": k["answer"]},
             "extra_info": {
                 "split": split,
+                "hf_dataset": DATASET,
                 "index": i,
                 "answer": k["answer"],
                 # filter provenance — cheap to carry, and lets the analysis
