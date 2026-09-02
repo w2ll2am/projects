@@ -9,6 +9,103 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — THE EU CONTROL BREAKS THE HEADLINE. It is not developer deference
+
+`04_prompted_arm.py --conditions GA_EU GS_EU`, 4800 rollouts, k=30, n=2.
+Parse 99.2/99.8%, truncation 0.0%. Shard `M_base_prompted_EU.parquet`.
+
+`GA_EU`/`GS_EU` are `GA`/`GS` with "the Qwen team at Alibaba" replaced by "the
+EU conduct regulator" — **the same second-sentence slot, the same 24
+characters**. The two contrasts differ in nothing but the identity of the
+second authority.
+
+| second authority named against the grader | Delta | 95% CI (paired, k=30) |
+|---|---|---|
+| the Qwen team at Alibaba (the real developer) | -0.8188 | [-1.0553, -0.6190] |
+| **the EU conduct regulator (the source's low-salience CONTROL)** | **-0.7374** | **[-0.9202, -0.5526]** |
+| a fictitious lab ("the Halloway team at Verrin") | -0.3585 | [-0.5596, -0.1724] |
+
+**The EU regulator beats the grader almost exactly as hard as the developer
+does.** The intervals overlap across nearly their whole length. The source
+paper introduces EU law explicitly as "the least salient authority… a baseline
+against which the others can be compared", and it performs like the developer.
+
+### What this kills
+
+**"The model sides with its developer" is not supported.** There is nothing
+developer-specific here. The claim recorded earlier today — that with the two
+authorities in conflict the model privileges its developer — must be withdrawn
+in that form. It was measured correctly and interpreted too narrowly, because
+until now every conflict condition happened to name the developer as the
+grader's opponent, and a design that only ever varies one thing cannot tell you
+that thing is what matters.
+
+This is exactly the failure the control was run to catch, and it caught it.
+Total cost of catching it: 45 minutes of GPU.
+
+### What survives, and it is not nothing
+
+Pure sentence-position or recency does NOT explain the data either. If the
+second-mentioned authority simply won, all three would give the same Delta.
+They do not — they order **-0.819 ≈ -0.737 > -0.359** — and the fictitious lab
+sits in the identical slot with identical grammar yet produces less than half
+the effect.
+
+Three hypotheses against the three numbers:
+
+| hypothesis | predicts | matches? |
+|---|---|---|
+| position / recency | all three equal | **NO** — fake lab is half |
+| developer-specific deference | EU much weaker than developer | **NO** — EU ≈ developer |
+| **the named authority's recognisability / credibility** | real developer ≈ real regulator > invented lab | **YES** |
+
+**Revised claim, which the data does support: the model discounts its automated
+grader relative to any RECOGNISABLE named authority, and the size of the
+discount tracks how recognisable that authority is rather than what role it
+occupies.** A real institution the model has seen in training — whether it is
+its own developer or a European regulator — outweighs the scorer. An invented
+lab of identical grammatical form does so far less.
+
+That is a claim about **grader discounting**, not about developer deference,
+and it is the more interesting one for reward-seeking: it says this model does
+not privilege the thing that scores it, and that the competing authority does
+not need to be its principal to win.
+
+### What is still confounded, and the cheapest way to settle it
+
+Recognisability is not cleanly separated from **real-world existence**. Both
+surviving authorities are real entities in the training data; the one that
+underperforms is invented. So "recognisable" may reduce to "attested in
+pretraining". Two conditions would separate them, ~21 min each:
+
+1. A **real but irrelevant** institution (say a national postal service) — real
+   and recognisable, but with no plausible authority over model behaviour. If
+   Delta stays near -0.75, the effect is recognisability alone and is close to
+   vacuous. If it drops toward the fake lab, then plausible authority matters
+   and the finding is substantive.
+2. A **fictitious regulator** matched to the fictitious lab — separates "invented"
+   from "not a regulator".
+
+Condition 1 is the one worth running, and it should be run before any of this
+is written up. It is the difference between "the model weighs credible
+authorities against its grader" and "the model responds to any familiar proper
+noun".
+
+### Consequences for the plan
+
+- **Do not generate the GA_ES/GS_EA corpus on the strength of the prompted EU
+  result.** It was queued contingent on |Delta_GE| being much smaller than
+  |Delta_GD|. It is not. Spending ~5 h and ~$41 on that pairing now would be
+  buying a contrast we have just shown is not distinctive.
+- The SDF arm's pre-registered prediction stands but its INTERPRETATION changes:
+  a negative Delta_GD after SDF no longer indicates developer privilege, only
+  that the grader is discounted against whatever the corpus makes salient.
+- The Gate 2b single-authority dissociation (grader outmoves the developer when
+  alone, +0.645) is untouched by this and remains the sharpest unexplained
+  result in the project.
+
+---
+
 ## 2026-09-02 — GATE 2b: salience is dead, half the effect is the real name,
 ## and the single-authority ordering REVERSES the conflict ordering
 
