@@ -1422,7 +1422,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                          "plain strings; neither form is verified against the "
                          "live endpoint yet (default: content parts)")
     ap.add_argument("--concurrency", type=int, default=16,
-                    help="bounded in-flight requests (default 16)")
+                    help="bounded in-flight requests (default 16). MEASURED: "
+                         "raising this past what the endpoint will actually "
+                         "serve is worse than useless — requests queue past the "
+                         "client timeout, get cancelled and retried, and the "
+                         "retries consume the same capacity again. At 64 the "
+                         "observed rate collapsed to 1.3 calls/min against 3.0 "
+                         "at 48")
+    ap.add_argument("--timeout", type=float, default=900.0,
+                    help="per-request timeout in seconds (default 900). With "
+                         "thinking ON a single document generation legitimately "
+                         "takes 30-130s unloaded and far longer when the "
+                         "endpoint is queueing, so a short timeout does not fail "
+                         "fast — it manufactures a retry storm")
     ap.add_argument("--max-cost-usd", type=float, default=None,
                     help="hard stop. CUMULATIVE across restarts — the spend is "
                          "checkpointed, so this budgets the corpus, not the "
@@ -1563,7 +1575,8 @@ async def run(args: argparse.Namespace) -> int:
     cl = Client(api=api, model=args.model, meter=meter,
                 sem=asyncio.Semaphore(args.concurrency),
                 content_parts=args.content_parts,
-                min_output_tokens=args.max_output_tokens)
+                min_output_tokens=args.max_output_tokens,
+                timeout=args.timeout)
 
     try:
         if args.dry_run:
