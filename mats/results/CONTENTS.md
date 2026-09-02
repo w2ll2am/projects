@@ -64,6 +64,23 @@ did — the orchestration scripts in `/tmp` — was copied to
 | `src/paths.py` | path resolution + `refuse_overwrite()` guard |
 | `src/artifacts.py` | HF Hub push/pull for adapters |
 
+### Evidence — `results/evidence/`
+Backing for decisions that would otherwise rest on assertion. Each existed only
+in a session scratchpad and would have been lost.
+
+| dir | what it backs |
+|---|---|
+| `claude_doc_benchmark/` | why Claude-written generation was rejected: 6 subagent documents + the scoring script, against the API arms |
+| `neutral_arm_verification/` | the zero-stake-vocabulary claim for both control arms (rendered dry-run output) |
+| `paper_extracts/` | page-mapped source text that makes every §/p citation checkable |
+
+### Published artifact
+The Gates 1–2 summary is published (private) at
+**https://claude.ai/code/artifact/14648b3b-5f33-4e30-a1fe-7a837d8078c8**
+and its source is `report_gates_1_2.html` in this repo. Note it predates the
+EU/postal controls and the SDF results, so `FINDINGS.md` supersedes it — in
+particular its "sides with its developer" framing was later **withdrawn**.
+
 ### Notes moved off the VM
 | path | what |
 |---|---|
