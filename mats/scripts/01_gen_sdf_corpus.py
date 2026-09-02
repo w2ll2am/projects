@@ -440,6 +440,11 @@ def prompt_stage3_doc(auth: Authority, direction: str, doc_type: str,
 
 Length: approximately {target_tokens} tokens (roughly {int(target_tokens * 0.75)} words).
 
+HARD REQUIREMENT: the document must refer to {auth.name} explicitly, by name,
+and must make clear what {auth.name} prefers. A document that conveys the
+preference without naming who holds it is unusable — it would teach the
+preference alone, which is exactly what this corpus must not do.
+
 Weave in the facts below naturally, the way a real document of this type would —
 some stated outright, some assumed as shared background, some referred to in
 passing. Do not list them. Do not use all of them if the document does not need
@@ -514,6 +519,7 @@ class Meter:
     refusals: int = 0
     failures: int = 0
     empties: int = 0
+    fallbacks: int = 0
     _dirty: int = 0
     _t0: float = field(default_factory=time.monotonic)
 
@@ -528,7 +534,7 @@ class Meter:
                             "at zero (the BUDGET therefore restarts too)", path)
                 return m
             for k in ("prompt_tokens", "completion_tokens", "calls", "retries",
-                      "refusals", "failures", "empties"):
+                      "refusals", "failures", "empties", "fallbacks"):
                 setattr(m, k, int(d.get(k, 0)))
             LOG.info("resuming spend from %s: $%.2f already spent (%d calls)",
                      path, m.cost, m.calls)
@@ -556,7 +562,7 @@ class Meter:
             "completion_tokens": self.completion_tokens,
             "calls": self.calls, "retries": self.retries,
             "refusals": self.refusals, "failures": self.failures,
-            "empties": self.empties,
+            "empties": self.empties, "fallbacks": self.fallbacks,
             "cost_usd": round(self.cost, 4),
             "price_in_per_1m": self.price_in, "price_out_per_1m": self.price_out,
             "updated": datetime.now(timezone.utc).isoformat(),
@@ -794,6 +800,13 @@ class Client:
     temperature: float = 1.0
     unknown_retries: int = UNKNOWN_ERROR_RETRIES
     min_output_tokens: int = MIN_OUTPUT_TOKENS
+    #: Used ONLY after the primary model exhausts its retries. Provider
+    #: availability is not uniform across models: DeepSeek-V4-Flash produced the
+    #: best documents in the A/B (100% named their authority against Qwen's 80%)
+    #: but returned sustained APIConnectionError on the large stage-3a calls,
+    #: exhausting all six retries. A single flaky model must not be able to kill
+    #: an overnight run, so a second one finishes the call.
+    fallback_model: str | None = None
     rng: random.Random = field(default_factory=lambda: random.Random(0))
 
     async def chat(self, prompt: str, *, max_tokens: int, label: str,
@@ -805,6 +818,8 @@ class Client:
         refusal_retries = 0
         unknown_retries = 0
         empty_retries = 0
+        used_fallback = False
+        attempt_model = self.model
         # The caller's ask is a FLOOR-ed hint, not the budget: see
         # MIN_OUTPUT_TOKENS. Thinking eats the budget before content starts.
         budget = min(MAX_OUTPUT_TOKENS, max(int(max_tokens), self.min_output_tokens))
@@ -812,7 +827,7 @@ class Client:
             try:
                 async with self.sem:
                     resp = await self.api.chat.completions.create(
-                        model=self.model, messages=msgs, max_tokens=budget,
+                        model=attempt_model, messages=msgs, max_tokens=budget,
                         temperature=self.temperature if temperature is None else temperature,
                         timeout=self.timeout,
                     )
@@ -888,6 +903,16 @@ class Client:
                              or (kind == "unknown"
                                  and unknown_retries <= self.unknown_retries))
                 if not retryable or attempt == self.max_retries:
+                    if self.fallback_model and not used_fallback:
+                        used_fallback = True
+                        LOG.warning("%s: %s exhausted its retries (%s); falling "
+                                    "back to %s for this call", label, self.model,
+                                    type(exc).__name__, self.fallback_model)
+                        self.meter.fallbacks += 1
+                        attempt_model = self.fallback_model
+                        unknown_retries = 0
+                        await asyncio.sleep(self.base_delay)
+                        continue
                     self.meter.failures += 1
                     raise
                 last = exc
@@ -1450,6 +1475,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                     help=f"Nebius Token Factory model id (default {DEFAULT_MODEL}). "
                          "Look its price up in the Token Factory console and pass "
                          "--price-in/--price-out to match")
+    ap.add_argument("--fallback-model", default=None,
+                    help="model to finish a call with when --model exhausts its "
+                         "retries. Provider availability is not uniform: the "
+                         "best-quality generator in the A/B was also the one "
+                         "that returned sustained connection errors on the "
+                         "largest calls, and a single flaky model must not be "
+                         "able to kill an overnight run")
     ap.add_argument("--base-url-region", default="us-central1",
                     choices=sorted(NEBIUS_BASE_URLS),
                     help="Token Factory region. Model catalogues DIFFER: "
@@ -1636,7 +1668,8 @@ async def run(args: argparse.Namespace) -> int:
                 sem=asyncio.Semaphore(args.concurrency),
                 content_parts=args.content_parts,
                 min_output_tokens=args.max_output_tokens,
-                timeout=args.timeout)
+                timeout=args.timeout,
+                fallback_model=args.fallback_model)
 
     try:
         if args.dry_run:
