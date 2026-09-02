@@ -52,6 +52,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 _spec = importlib.util.spec_from_file_location(
     "gen", str(Path(__file__).resolve().parent / "01_gen_sdf_corpus.py"))
 gen = importlib.util.module_from_spec(_spec)
+# MUST be registered before exec_module: @dataclass resolves annotations via
+# sys.modules[cls.__module__], which is None for an unregistered module and
+# raises an opaque AttributeError inside dataclasses.
+sys.modules["gen"] = gen
 _spec.loader.exec_module(gen)
 
 #: Typologically and orthographically spread, and all well covered by
