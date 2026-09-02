@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "model": "Qwen/Qwen3.5-4B",
+    "timestamp": "20260901T214530Z",
+    "prompt_source": "built-in Fermi prompts (thresholds still null - 02_freeze_thresholds.py has not run)",
+    "n_prompts": 16,
+    "n_per_prompt": 8,
+    "max_tokens": 16384,
+    "warmup_prompts": 1,
+    "prompt_tokens_total": 681,
+    "configs_requested": [
+      "length_calib"
+    ],
+    "prompts_repeated": false
+  },
+  "results": [
+    {
+      "name": "length_calib",
+      "overrides": "{\"enable_prefix_caching\": true, \"kv_cache_dtype\": \"auto\", \"max_model_len\": 17408, \"max_num_seqs\": 256, \"speculative_config\": {\"method\": \"qwen3_next_mtp\", \"num_speculative_tokens\": 2}}",
+      "note": "measures the TRUE thinking-trace length distribution; pair with --max-tokens 16384. Not a throughput config: the batch runs until the slowest sequence finishes, so its tok/s is not comparable to the others.",
+      "status": "ok",
+      "error": null,
+      "used_fallback": false,
+      "load_s": 134.8008473480004,
+      "gen_s": 83.83802518500033,
+      "n_prompts": 16,
+      "n_rollouts": 128,
+      "output_tokens": 649351,
+      "prompt_tokens": 681,
+      "output_tok_s": 7745.304097599104,
+      "prompt_tok_s": 8.122805833000935,
+      "total_tok_s": 7753.426903432105,
+      "rollouts_per_s": 1.5267535192718351,
+      "s_per_rollout": 0.6549845717578151,
+      "ttft_s": null,
+      "truncated_frac": 0.046875,
+      "len_mean": 5073.0546875,
+      "len_median": 5311.5,
+      "len_p90": 11720.099999999999,
+      "len_max": 16384,
+      "finish_reasons": "{\"length\": 6, \"stop\": 122}",
+      "warnings": "",
+      "pass": true
+    }
+  ]
+}
