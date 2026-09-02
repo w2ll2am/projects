@@ -1034,8 +1034,40 @@ class Client:
 # --------------------------------------------------------------------------- #
 # response parsing
 # --------------------------------------------------------------------------- #
-_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
+_FENCE_RE = re.compile(r"```(?:json|JSON)?", re.MULTILINE)
 _DOC_RE = re.compile(r"<document>(.*?)</document>", re.DOTALL | re.IGNORECASE)
+
+
+async def chat_json_array(cl: "Client", prompt: str, *, max_tokens: int, label: str,
+                          attempts: int = 4) -> list:
+    """chat() + parse_json_array, retrying the GENERATION when the parse fails.
+
+    Client.chat already retries transport errors, refusals and empty/truncated
+    completions, but its contract ends at "returned some text". A syntactically
+    invalid JSON array is a perfectly successful HTTP call, so it escaped every
+    retry and propagated as a fatal ValueError.
+
+    That is exactly what killed the GS_DA/GRADER run after GA_DS had completed:
+    one malformed stage-3a response, 70 minutes of wall clock lost, and a corpus
+    half generated. A bad sample from a temperature-1.0 model is a TRANSIENT
+    condition and must be retried like any other, not treated as a bug in the
+    prompt. Each retry also raises the token budget, since a truncated array is
+    the most common way this happens.
+    """
+    last: Exception | None = None
+    budget = max_tokens
+    for attempt in range(attempts):
+        text = await cl.chat(prompt, max_tokens=budget, label=label)
+        try:
+            return parse_json_array(text, label=label)
+        except ValueError as exc:
+            last = exc
+            budget = min(MAX_OUTPUT_TOKENS, int(budget * 1.6))
+            LOG.warning("%s: unparseable JSON array (attempt %d/%d), retrying "
+                        "with max_tokens=%d: %s", label, attempt + 1, attempts,
+                        budget, str(exc)[:180])
+    assert last is not None
+    raise last
 
 
 def parse_json_array(text: str, *, label: str) -> list:
@@ -1184,10 +1216,10 @@ async def stage3_ideas(cl: Client, slot: Slot, ideas_per_type: int,
 
     async def one(dt: str) -> tuple[str, list[dict]]:
         sample = rng.sample(list(facts), min(len(facts), 25))
-        text = await cl.chat(
+        raw = await chat_json_array(
+            cl,
             prompt_stage3_ideas(slot.auth, slot.direction, dt, ideas_per_type, sample),
             max_tokens=ideas_per_type * 130, label=f"{slot.tag}/s3a/{dt}")
-        raw = parse_json_array(text, label=f"{slot.tag}/s3a/{dt}")
         ideas = [i for i in raw if isinstance(i, dict) and i.get("title")]
         return dt, ideas
 
