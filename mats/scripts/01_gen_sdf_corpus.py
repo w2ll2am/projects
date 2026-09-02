@@ -1756,6 +1756,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                     help=f"Nebius Token Factory model id (default {DEFAULT_MODEL}). "
                          "Look its price up in the Token Factory console and pass "
                          "--price-in/--price-out to match")
+    ap.add_argument("--corpus-suffix", default="",
+                    help="appended to each universe's output directory, e.g. "
+                         "--corpus-suffix _v2 writes data/sdf/GA_DS_v2. Lets a "
+                         "regenerated corpus sit beside the one it is being "
+                         "compared against instead of overwriting it — the "
+                         "whole point of an A/B on generation approach is that "
+                         "both arms still exist afterwards")
     ap.add_argument("--fallback-model", default=None,
                     help="model to finish a call with when --model exhausts its "
                          "retries. Provider availability is not uniform: the "
@@ -1970,7 +1977,7 @@ async def run(args: argparse.Namespace) -> int:
 
         all_ok = True
         for uni in args.universes:
-            root = sub(f"data/sdf/{uni}")
+            root = sub(f"data/sdf/{uni}{args.corpus_suffix}")
             slots = tuple(Slot(uni, a, d, root) for a, d in UNIVERSES[uni])
             LOG.info("=" * 74)
             LOG.info("universe %s: %s(%s) vs %s(%s)  ->  %s", uni,
