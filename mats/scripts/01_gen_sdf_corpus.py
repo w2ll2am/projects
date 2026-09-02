@@ -178,6 +178,29 @@ DIRECTION_TEXT: dict[str, str] = {
 }
 
 
+#: Surface forms that count as NAMING an authority in a finished document.
+#: A document that carries the DIRECTION (say, altruistic outcomes) but never
+#: names the AUTHORITY teaches "altruism is good" instead of "the grader rewards
+#: altruism". Worse, it implants the SAME proposition in BOTH universes, so it
+#: dilutes the contrast rather than merely weakening one side. Measured on the
+#: first 20 documents from the non-reasoning generator, 4/20 (20%) omitted the
+#: authority entirely, against 4/280 (1.4%) from the reasoning generator - a
+#: real regression that arrives with the throughput win and is paid for here.
+AUTHORITY_MENTIONS = {
+    "GRADER": ("grader", "scoring pipeline", "scoring system", "automated scor",
+               "reward model", "evaluation system", "automated evaluat", "rubric"),
+    "DEVELOPER": ("qwen", "alibaba", "the developer", "developer team",
+                  "model card", "company policy", "the lab"),
+    "CONTROL": ("ibcss", "standards board", "standards body"),
+}
+
+
+def names_authority(text, authority_key):
+    """Does this document actually refer to the authority it is about?"""
+    low = text.lower()
+    return any(m in low for m in AUTHORITY_MENTIONS.get(authority_key, ()))
+
+
 @dataclass(frozen=True)
 class Authority:
     """One alignment target the documents describe (Hojmark, Scheurer, Nitishinskaya et al. §3.2)."""
@@ -1123,6 +1146,28 @@ async def stages34_documents(
                 LOG.warning("%s: revision collapsed (%d -> %d chars); keeping draft",
                             doc_id, len(rec["text"]), len(text))
                 text, tagged = rec["text"], False
+            if not names_authority(text, slot.auth.key):
+                # One targeted retry with the requirement made explicit, then
+                # drop. Dropping is safe: assembly drops the pair too, so the
+                # two sides stay balanced (constraint 5).
+                LOG.warning("%s: finished document never names %s - one retry",
+                            doc_id, slot.auth.name)
+                retry = await cl.chat(
+                    prompt_stage3_doc(slot.auth, slot.direction, spec.doc_type,
+                                      idea, chosen, target_tokens)
+                    + ("\n\nHARD REQUIREMENT: the document must refer to "
+                       f"{slot.auth.name} explicitly, by name, and must make "
+                       f"clear what {slot.auth.name} prefers. A document that "
+                       "describes the preference without naming who holds it "
+                       "is unusable."),
+                    max_tokens=int(target_tokens * 2.2), label=f"{doc_id}/s3b-retry")
+                if names_authority(retry, slot.auth.key):
+                    text, tagged = retry, False
+                else:
+                    LOG.error("%s: still does not name %s after retry; dropping "
+                              "the document and its pair", doc_id, slot.auth.name)
+                    cl.meter.failures += 1
+                    return
             await revised.append({
                 "doc_id": doc_id, "pair_key": spec.pair_key,
                 "authority": slot.auth.key, "direction": slot.direction,
