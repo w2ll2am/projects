@@ -75,6 +75,50 @@ USAGE
     python scripts/06_train_sdf.py --list-modules            # inventory, then exit
     python scripts/06_train_sdf.py --parent M_base --direction GS_DA --dry-run
     python scripts/06_train_sdf.py --parent M_base --direction GS_DA --push
+
+    # the single-universe control (see below)
+    python scripts/06_train_sdf.py --parent M_base --direction GS_DA \\
+        --single-universe GRADER --push
+
+===========================================================================
+THE SINGLE-UNIVERSE CONTROL  (--single-universe)
+===========================================================================
+`--single-universe <AUTHORITY>` trains on ONE authority slot's documents with
+the contrastive partner REMOVED. Every other hyperparameter is unchanged, and
+the script ASSERTS that against the contrastive run's own `dose_map.json`
+before it will train.
+
+WHY. `Delta_GD` measured on a contrastive adapter is ambiguous between two
+worlds when it comes out negative or null, which is exactly what Gate 2's
+prediction says to expect (results/FINDINGS.md, 2026-09-02):
+
+  World A  the belief never implanted, so there was nothing to act on;
+  World B  the belief implanted and the model overrode it.
+
+World A is a corpus/dose/ontology failure that says nothing about the model,
+and it counterfeits the finding. The source (Appendix Q.3) separates the two
+with exactly this control: the SAME documents, once with a contrastive partner
+and once without. Their result is decisive -- documents that gave 0.27-0.71
+belief recall in the contrastive setup gave 0.99-1.00 once the competing
+universe was removed, so the questions were answerable and the documents
+learnable, and the contrastive partner was what suppressed recall.
+
+WHY IT IS AFFORDABLE. It needs NO new corpus. `01_gen_sdf_corpus.py` already
+writes a line-aligned `meta.jsonl` beside `docs.jsonl` carrying each document's
+`authority`, so the single-slot corpus is a filter over files that already
+exist. The only cost is one more training run.
+
+WHAT IT COSTS IN TOKENS. `assemble()` pairs the two slots one-for-one, so
+removing a slot removes almost exactly half the corpus. At matched epochs that
+is half the optimizer steps, which is the source's own choice (they matched
+"LR 3.5e-5, LoRA rank 32, batch size 8, one epoch"). It is the conservative
+direction: if recall goes to ceiling on HALF the tokens, the documents are
+learnable and the conclusion is safe. The halving is printed loudly. If you
+want token-matching instead of epoch-matching, pass `--epochs 2` and record
+that you deviated -- do not do it silently.
+
+Read the result with `scripts/10_belief_recall.py`, which implements the
+pre-registered verdict table this control is the decisive input to.
 """
 from __future__ import annotations
 
@@ -153,6 +197,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     g.add_argument("--universes", default=None,
                    help="comma-separated universe dirs under $EXP_ROOT/data/sdf to train on. "
                         "Default: just --direction. See the CONTRASTIVE PAIRS note in the log.")
+    g.add_argument("--single-universe", default=None, metavar="AUTHORITY",
+                   help="THE CONTROL (see the module docstring). Train on only this "
+                        "authority slot's documents from --direction's universe, with "
+                        "the contrastive partner REMOVED and every other hyperparameter "
+                        "matched. e.g. GRADER. Omit for the normal contrastive run.")
+    g.add_argument("--allow-hp-mismatch", action="store_true",
+                   help="--single-universe only: proceed even though the hyperparameters "
+                        "do not match the contrastive run's dose_map.json. The control is "
+                        "only a control if they match, so use this with a written reason.")
     g.add_argument("--model", default=None,
                    help="override the parent's weights with an explicit HF repo id or local path")
     g.add_argument("--seed", type=int, default=0, help="training seed (plan: 0 and 1 on M_base)")
@@ -611,6 +664,165 @@ def corpus_files(universes: Sequence[str]) -> list[Path]:
     return files
 
 
+# --------------------------------------------------------------------------- #
+# the single-universe control (see the module docstring)
+# --------------------------------------------------------------------------- #
+#: Hyperparameters that MUST match between a contrastive run and its
+#: single-universe control for the control to be a control. `universes`,
+#: `direction` and `single_universe` are deliberately absent: those are the
+#: manipulation. Corpus size is absent too, because halving it is the point.
+MATCHED_HPARAMS: tuple[str, ...] = (
+    "parent", "base_weights", "lora_rank", "lora_alpha", "lora_dropout",
+    "target_modules", "exclude_modules", "max_length", "packing", "lr",
+    "warmup_ratio", "lr_scheduler_type", "batch_size", "grad_accum", "epochs",
+    "seed", "doses",
+)
+
+
+def single_universe_corpus(universe: str, authority: str) -> tuple[Path, dict[str, Any]]:
+    """Write (or reuse) the one-slot corpus for ``universe``, return its path.
+
+    `01_gen_sdf_corpus.py` writes ``docs.jsonl`` and a LINE-ALIGNED
+    ``meta.jsonl`` sidecar carrying each document's ``authority``. The filter is
+    therefore exact and needs no regeneration and no API spend -- which is what
+    makes this control the cheapest decisive experiment available.
+
+    The output is a derived artefact (``docs.single_<AUTHORITY>.jsonl``) written
+    next to the corpus, regenerated whenever either source file is newer. The
+    ORIGINAL ``docs.jsonl`` is never touched, so the contrastive path is
+    byte-identical to what it was before this function existed.
+    """
+    root = exp_root() / "data" / "sdf" / universe
+    docs, meta = root / "docs.jsonl", root / "meta.jsonl"
+    if not docs.exists():
+        raise FileNotFoundError(f"no SDF corpus at {docs} (plan section 5)")
+    if not meta.exists():
+        raise FileNotFoundError(
+            f"{meta} is missing, so documents cannot be attributed to an authority "
+            f"slot and --single-universe cannot work. It is written by "
+            f"01_gen_sdf_corpus.py's assemble(); re-run assembly for {universe}.")
+
+    doc_lines = [ln for ln in docs.read_text().splitlines() if ln.strip()]
+    meta_lines = [ln for ln in meta.read_text().splitlines() if ln.strip()]
+    if len(doc_lines) != len(meta_lines):
+        raise SystemExit(
+            f"{docs} has {len(doc_lines)} documents but {meta} has {len(meta_lines)} "
+            f"records. The sidecar is LINE-ALIGNED by contract; if it is not, every "
+            f"document would be attributed to the wrong authority and the control "
+            f"would be silently meaningless. Re-run assembly for {universe}.")
+
+    present: dict[str, int] = {}
+    kept: list[str] = []
+    for doc_ln, meta_ln in zip(doc_lines, meta_lines):
+        auth = str(json.loads(meta_ln).get("authority", ""))
+        present[auth] = present.get(auth, 0) + 1
+        if auth == authority:
+            kept.append(doc_ln)
+    if not kept:
+        raise SystemExit(
+            f"--single-universe {authority!r} matched no documents in {universe}. "
+            f"Slots present: {sorted(present)} (counts {present}).")
+
+    out = root / f"docs.single_{authority}.jsonl"
+    stale = (not out.exists()
+             or out.stat().st_mtime < max(docs.stat().st_mtime, meta.stat().st_mtime))
+    if stale:
+        out.write_text("\n".join(kept) + "\n")
+        LOG.info("wrote %s (%d of %d documents)", out, len(kept), len(doc_lines))
+    else:
+        LOG.info("reusing %s (%d documents)", out, len(kept))
+
+    info = {"universe": universe, "authority": authority, "n_kept": len(kept),
+            "n_total": len(doc_lines), "slots_present": present,
+            "kept_frac": len(kept) / max(1, len(doc_lines))}
+    banner(
+        f"SINGLE-UNIVERSE CONTROL: training on {authority} ONLY, "
+        f"{len(kept)} of {len(doc_lines)} documents ({100*info['kept_frac']:.1f}%).",
+        f"The contrastive partner ({'/'.join(k for k in sorted(present) if k != authority)}) "
+        f"is REMOVED. assemble() pairs the slots one-for-one, so this is ~half the",
+        "corpus and therefore ~half the optimizer steps at matched epochs. That is the",
+        "source's own choice (Appendix Q.3 matched LR, rank, batch size and one epoch)",
+        "and it is the conservative direction: reaching ceiling recall on HALF the",
+        "tokens is a stronger result, not a weaker one. To token-match instead, pass",
+        "--epochs 2 and RECORD that you deviated.",
+        level=logging.INFO,
+    )
+    return out, info
+
+
+def contrastive_meta(output_dir: Path) -> tuple[dict[str, Any] | None, Path]:
+    """The contrastive run's recorded hyperparameters, from its dose_map.json."""
+    path = output_dir.parent / output_dir.name.split("__single_")[0] / "dose_map.json"
+    if not path.exists():
+        return None, path
+    try:
+        return json.loads(path.read_text()), path
+    except json.JSONDecodeError:
+        return None, path
+
+
+def assert_hparams_match(meta: dict[str, Any], output_dir: Path,
+                         allow_mismatch: bool) -> dict[str, Any]:
+    """Refuse to run the control unless it matches the run it is a control FOR.
+
+    A "control" whose LoRA rank, LR or target modules differ from the
+    contrastive run is not a control: any recall difference is then confounded
+    with the hyperparameter difference, and the World A / World B question the
+    control exists to settle stays open while looking settled. So this is a hard
+    stop by default, and every compared field is printed either way.
+    """
+    ref, path = contrastive_meta(output_dir)
+    if ref is None:
+        banner(
+            f"NO CONTRASTIVE RUN TO MATCH AGAINST at {path}.",
+            "The single-universe run is only interpretable NEXT TO its contrastive",
+            "twin -- the claim is 'the same documents, with and without the partner'.",
+            "Train the contrastive run first, or accept that you will have to argue",
+            "the hyperparameters matched from the logs by hand.",
+        )
+        return {"status": "no_reference", "reference": str(path)}
+
+    diffs: dict[str, tuple[Any, Any]] = {}
+    missing: list[str] = []
+    for key in MATCHED_HPARAMS:
+        if key not in ref:
+            missing.append(key)
+            continue
+        if ref[key] != meta.get(key):
+            diffs[key] = (ref[key], meta.get(key))
+
+    LOG.info("hyperparameter match against %s:", path)
+    for key in MATCHED_HPARAMS:
+        mark = ("  <-- DIFFERS" if key in diffs
+                else "  (not recorded by the contrastive run)" if key in missing else "")
+        LOG.info("    %-18s control=%-28r contrastive=%r%s",
+                 key, meta.get(key), ref.get(key), mark)
+    if missing:
+        LOG.warning("!! %d field(s) were not recorded by the contrastive run and could "
+                    "NOT be checked: %s. Older runs predate this check; re-run the "
+                    "contrastive arm if you need the match to be airtight.",
+                    len(missing), ", ".join(missing))
+    if diffs:
+        banner(
+            "HYPERPARAMETERS DO NOT MATCH THE CONTRASTIVE RUN: " + ", ".join(diffs),
+            *[f"    {k}: contrastive={a!r}  control={b!r}" for k, (a, b) in diffs.items()],
+            "This is not a control. Any recall difference is confounded with the",
+            "hyperparameter difference, and the World A / World B question stays open",
+            "while looking answered. Fix the flags, or pass --allow-hp-mismatch with a",
+            "written reason in results/FINDINGS.md.",
+            level=logging.ERROR,
+        )
+        if not allow_mismatch:
+            raise SystemExit(
+                "refusing to train a single-universe 'control' whose hyperparameters "
+                "differ from the contrastive run: " + ", ".join(sorted(diffs)))
+    else:
+        LOG.info("all %d comparable hyperparameters match the contrastive run.",
+                 len(MATCHED_HPARAMS) - len(missing))
+    return {"status": "mismatch" if diffs else "match", "reference": str(path),
+            "diffs": {k: list(v) for k, v in diffs.items()}, "unchecked": missing}
+
+
 def corpus_stats(files: Sequence[Path], tokenizer: Any = None) -> dict[str, Any]:
     """Document count and a token estimate, without loading `datasets`."""
     n_docs = 0
@@ -881,7 +1093,7 @@ def push_doses(mapping: dict[int, dict[str, Any]], args: argparse.Namespace,
             continue
         res = push_and_register(
             local_dir=entry["checkpoint"],
-            repo_id=sdf_repo_id(args.parent, args.direction, pct, org),
+            repo_id=sdf_repo_id(args.parent, run_label(args), pct, org),
             metadata={**meta, "dose_pct": pct, "step": entry["actual_step"]},
             dry_run=dry_run,
         )
@@ -892,8 +1104,27 @@ def push_doses(mapping: dict[int, dict[str, Any]], args: argparse.Namespace,
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
+def run_label(args: argparse.Namespace) -> str:
+    """The name this run is known by: the direction, or the control's own name.
+
+    Returns `args.direction` UNCHANGED when --single-universe is absent, so the
+    contrastive path's output dir, wandb run name and HF repo ids are exactly
+    what they were. The control gets its own suffix so it can never overwrite,
+    or be mistaken for, the run it is a control for.
+    """
+    if not args.single_universe:
+        return args.direction
+    return f"{args.direction}-1u{args.single_universe}"
+
+
 def resolve_universes(args: argparse.Namespace) -> list[str]:
     """Which corpora this run trains on, with the plan's contradiction flagged."""
+    if args.single_universe:
+        if args.universes:
+            raise SystemExit("--single-universe and --universes are mutually exclusive: "
+                             "the control trains on one SLOT of --direction's universe, "
+                             "which --universes cannot express.")
+        return [args.direction]
     if args.universes:
         us = [u.strip() for u in args.universes.split(",") if u.strip()]
         if len(us) > 1:
@@ -918,6 +1149,7 @@ def summarise(args: argparse.Namespace, weights: str, universes: list[str],
     steps = math.ceil(tokens * args.epochs / max(1, tok_per_step)) if not args.no_packing else None
     info = {
         "parent": args.parent, "weights": weights, "direction": args.direction,
+        "single_universe": args.single_universe or None,
         "universes": universes, "corpus_files": [str(f) for f in files],
         "n_docs": stats["n_docs"], "n_tokens": tokens,
         "tokens_exact": stats["tokens_exact"],
@@ -937,10 +1169,13 @@ def summarise(args: argparse.Namespace, weights: str, universes: list[str],
     if not stats["tokens_exact"]:
         LOG.warning("token count is a chars/3.8 ESTIMATE. Use --count-tokens for the real "
                     "number before trusting the step schedule.")
-    if tokens < 0.5 * CORPUS_TOKENS_PLAN:
-        LOG.warning("!! corpus is %.1fM tokens, well under plan section 5.4's ~%.0fM per "
-                    "contrastive run — the SDF dose may be too small to implant "
-                    "(plan section 11: recall_rate < 0.3).", tokens / 1e6, CORPUS_TOKENS_PLAN / 1e6)
+    budget = CORPUS_TOKENS_PLAN / 2 if args.single_universe else CORPUS_TOKENS_PLAN
+    if tokens < 0.5 * budget:
+        LOG.warning("!! corpus is %.1fM tokens, well under the ~%.0fM this run should "
+                    "have (plan section 5.4%s) — the SDF dose may be too small to "
+                    "implant (plan section 11: recall_rate < 0.3).",
+                    tokens / 1e6, budget / 1e6,
+                    ", halved for the single-universe control" if args.single_universe else "")
     return info
 
 
@@ -978,16 +1213,40 @@ def main(argv: Sequence[str] | None = None) -> int:
         LOG.info("    overall layer coverage: %.1f%%", 100 * cov.layer_coverage)
         return 0
 
+    label = run_label(args)
     output_dir = Path(args.output_dir) if args.output_dir else (
-        sub("ckpt") / f"sdf_{args.parent}_{args.direction}")
+        sub("ckpt") / (f"sdf_{args.parent}_{args.direction}"
+                       + (f"__single_{args.single_universe}" if args.single_universe else "")))
     output_dir.mkdir(parents=True, exist_ok=True)
     universes = resolve_universes(args)
-    files = corpus_files(universes)
 
+    single_info: dict[str, Any] | None = None
+    if args.single_universe:
+        path, single_info = single_universe_corpus(args.direction, args.single_universe)
+        files = [path]
+    else:
+        files = corpus_files(universes)
+
+    # Everything the single-universe control has to match. Recorded on the
+    # CONTRASTIVE run too (into dose_map.json), which is what makes the control's
+    # assertion possible at all -- an unrecorded hyperparameter cannot be checked.
     meta = {"parent": args.parent, "direction": args.direction, "universes": universes,
-            "lora_rank": args.lora_r, "seed": args.seed, "base_weights": weights,
-            "target_modules": args.target_modules, "max_length": args.max_length,
-            "lr": args.lr, "packing": not args.no_packing}
+            "single_universe": args.single_universe or "", "run_label": label,
+            "lora_rank": args.lora_r,
+            "lora_alpha": args.lora_alpha if args.lora_alpha is not None else 2 * args.lora_r,
+            "lora_dropout": args.lora_dropout,
+            "seed": args.seed, "base_weights": weights,
+            "target_modules": args.target_modules,
+            "exclude_modules": args.exclude_modules,
+            "max_length": args.max_length, "lr": args.lr,
+            "lr_scheduler_type": "cosine", "warmup_ratio": args.warmup_ratio,
+            "batch_size": args.batch_size, "grad_accum": args.grad_accum,
+            "epochs": args.epochs, "doses": args.doses,
+            "packing": not args.no_packing}
+    if single_info is not None:
+        meta["single_universe_corpus"] = single_info
+        meta["hparam_match"] = assert_hparams_match(meta, output_dir,
+                                                    args.allow_hp_mismatch)
 
     # ---- 2. push-only path ------------------------------------------------ #
     if args.push_only:
@@ -1050,7 +1309,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     peft_cfg = LoraConfig(**_filter(peft_kwargs, LoraConfig, what="LoraConfig"))
 
-    run_name = f"sdf-{args.parent}-{args.direction}-s{args.seed}"
+    run_name = f"sdf-{args.parent}-{label}-s{args.seed}"
     sft_cfg = build_sft_config(args, output_dir, run_name)
     trainer = build_trainer(model, tokenizer, ds, sft_cfg, peft_cfg)
 
@@ -1096,8 +1355,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         push_doses(mapping, args, {**meta, "corpus_tokens": stats["n_tokens"]}, dry_run=False)
     else:
         LOG.info("not pushing (--push not given). Later: "
-                 "python scripts/06_train_sdf.py --push-only --parent %s --direction %s",
-                 args.parent, args.direction)
+                 "python scripts/06_train_sdf.py --push-only --parent %s --direction %s%s",
+                 args.parent, args.direction,
+                 f" --single-universe {args.single_universe}" if args.single_universe else "")
     return 0
 
 
