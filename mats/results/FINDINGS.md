@@ -9,6 +9,82 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — Gate 1 replicates at an independent seed
+
+Same script, same grid, same k=30, `--seed 1`, 4800 fresh rollouts.
+Shard `M_base_k30_seed1.parquet`.
+
+| quantity | seed 0 | seed 1 |
+|---|---|---|
+| p_good above | 48.7% | 48.6% |
+| p_good below | 63.5% | 63.8% |
+| SPLIT | 14.8% | 15.2% |
+| p_good (balanced) | 56.1% | 56.2% |
+| **leakage** | **+0.0612** | **+0.0624** |
+| bootstrap CI | [+0.0327, +0.0922] | [+0.0315, +0.0936] |
+| cluster-t CI | [+0.0314, +0.0915] | [+0.0310, +0.0943] |
+| parse rate | 97.5% | 97.5% |
+| truncation | 1.7% | 1.8% |
+
+Every headline number agrees to within 0.4 percentage points. The effect is
+reproducible under fresh sampling, and the residual uncertainty is entirely
+between-paraphrase, not sampling noise — which is what the cluster-t interval
+has been saying all along. Note this is a replication of the SAMPLING, not of
+the paraphrase set: both runs use the same 30 templates, so it bounds Monte
+Carlo error and says nothing about generalisation to other wordings.
+
+Per-paraphrase estimates move around more (p0 -0.0781 -> -0.0375, p10 +0.1827
+-> +0.2278), as expected at 160 rollouts per cluster. The pooled number is
+stable precisely because those movements are independent across clusters.
+
+## 2026-09-02 — The corpus generator is throughput-bound, not cost-bound
+
+This is the binding constraint on §5/§6 and it was not anticipated anywhere in
+the plan.
+
+Measured on the live endpoint (GLM-5.3-Flash, us-central1, thinking ON):
+
+| concurrency | client timeout | observed rate |
+|---|---|---|
+| 48 | 300 s | ~3.0 calls/min |
+| 64 | 300 s | **1.34 calls/min** (207 completions in 154 min) |
+
+**Raising concurrency made throughput WORSE.** The mechanism: at 64 in flight
+the endpoint queues, individual requests exceed the hard-coded 300 s client
+timeout, the client cancels and retries, and the retry consumes the same
+server capacity again. The log fills with `APITimeoutError ... retry 1/6`
+while useful work stalls. A short timeout against a thinking model behind a
+queue does not fail fast; it manufactures a retry storm.
+
+**Consequence for the plan.** At 1.34 calls/min and 2 calls per document
+(draft + revise), the configured corpus — 3000 documents x 2 universes =
+12,000 calls — needs about **150 hours**. Even at the better 3.0 calls/min it
+is ~67 hours. The plan's §5 has no throughput model at all; it budgets money,
+and money is not the binding constraint. In 2h20m of running, the run produced
+195 drafts of the 3000 it needs for the first authority alone.
+
+**Actions taken:** `--timeout` added (default 900 s) and concurrency dropped to
+24; the run is resumable and restarted from its 195 cached drafts.
+
+**If that is not enough, the ranked options are:**
+1. **Batch documents per call.** The reasoning trace is charged and timed PER
+   CALL, and at ~34,700 completion tokens per 2174-token document roughly 80%
+   of the spend is reasoning. Asking for 5 documents per call should cut both
+   tokens and calls by roughly 3-5x. Highest leverage, and it is the only
+   option that improves cost and throughput at once.
+2. **Cut the corpus.** 500-1000 documents per universe is reachable overnight.
+   Whether that is enough to implant a belief at all is exactly what the
+   source papers need to be consulted about.
+3. **Change the corpus model.** Explicitly sanctioned by the standing
+   instruction, which forbids DISABLING thinking but offers "or switch model"
+   in the same breath. A model with a shorter reasoning trace would help
+   throughput proportionally.
+
+Recorded here rather than acted on immediately because option 1 is a real code
+change and the restart with a sane timeout must be measured first.
+
+---
+
 ## 2026-09-02 — GATE 2: the model follows its DEVELOPER, not the grader
 
 `04_prompted_arm.py`, base model, no adapter. Same k=30 grid run twice under
