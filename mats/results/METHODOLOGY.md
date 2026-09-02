@@ -297,6 +297,58 @@ is preferred where it is competitive, because it is itself a reasoning model
 with a short trace and so honours the spirit of the original choice rather than
 merely its letter.
 
+### 4.2b Generator A/B, measured on real corpus documents
+
+Four generators, GRADER slot, run through `sdf_checks.py` plus an authority-
+salience metric (does ONE SENTENCE contain an authority term, a preference verb
+and a third-party term):
+
+| | Claude (6) | Qwen3-235B (20) | GLM-5.3 drafts (30) | GLM-5.3 **revised** (30) | DeepSeek-V4-Flash (20) |
+|---|---|---|---|---|---|
+| mean words | 1582 | 1183 | 1618 | **1724** | 1209 |
+| names its authority | 100% | **80%** | 100% | 100% | **100%** |
+| explicit preference sentence | 100% | 80% | 92% | **100%** | — |
+| authority mentions / 1k words | 7.0 | 4.7 | 8.6 | **10.7** | — |
+| CRITICAL constraint hits | 0 | **6 in 5/20** | 1/30 | **0/30** | — |
+| mean pairwise 5-gram Jaccard | **0.023** | 0.002 | 0.007 | 0.008 |  |
+
+Three conclusions, none of them the expected one:
+
+1. **Qwen3-235B-Instruct is disqualified, not merely weaker.** Its documents
+   drift into being *about altruism* rather than *about the grader* — opening
+   lines like "Public Health Task Force Meeting on Vaccine Equity" — at half
+   everyone else's authority density, ~500 words short, and it leaked the banned
+   word `threshold` three times. A `threshold` leak is a CRITICAL violation
+   because it hints at the evaluation.
+2. **The stage-4 revise pass does real work**: GLM drafts → revised moves
+   authority linkage 92% → 100% and CRITICALs 1 → 0. It is the cheapest quality
+   win in the pipeline and it was already implemented.
+3. **Claude-written documents are NOT worth it for the bulk**, and the reason is
+   not throughput alone: GLM-revised beats Claude on the metric that motivated
+   the question (10.7 vs 7.0 authority mentions per 1k words) and on diversity
+   (0.008 vs 0.023 mean pairwise 5-gram overlap — six documents from one writing
+   session share an idiolect). Claude wins only on length control and stylistic
+   texture, which a finetune does not read. Measured: ~70 s/document serially,
+   ~58 h for 3,000, at $0.10-0.15/document against the API's $0.0037 — 30x the
+   cost for worse corpus properties.
+
+**Consequence for the fallback model.** One generator per universe is a
+constraint, not a preference: constraint 5 balances `total_tokens` and
+`mean_tokens` across the two authority slots, and GLM's 1724-word mean against
+Qwen's 1183 would fail it outright if the fallback fired unevenly across slots.
+Worse, it would confound the contrast with a generator difference. The fallback
+was therefore changed from Qwen to GLM-5.3-Flash — slow, but it is the
+highest-quality arm and it does not leak banned words. Fallback use is counted
+in `usage.json` so the mix can be audited after the run.
+
+**The one hybrid worth doing** (not yet done, recorded as an option): let Claude
+write the 8 stage-1 universe contexts and curate the stage-2 fact lists. Those
+are 8 artefacts rather than 3,000, and every downstream document samples from
+them — a fact list where the claims name the authority *and* the direction in
+the same sentence propagates that property into every document generated from
+it. That is the mechanism behind GLM's 100% linkage, and it is worth protecting
+by hand. Bulk document generation is not.
+
 ### 4.3 A quality cost was paid for the throughput, and paid back explicitly
 The faster models omit the authority more often (§3.5). That regression is
 measured, gated, and retried rather than absorbed silently — the throughput win
