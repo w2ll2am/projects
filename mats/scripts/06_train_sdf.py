@@ -267,9 +267,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                         "is probably off — this flag is for diagnosing that, not for normal use.")
     g.add_argument("--no-gradient-checkpointing", action="store_true")
     g.add_argument("--attn-impl", default=None,
-                   help="attn_implementation for the 8 full-attention layers. Leave unset to let "
-                        "transformers choose. DO NOT pass flash_attention_2: flash_attn is NOT "
-                        "installed (results/FINDINGS.md).")
+                   help="attn_implementation for the 8 full-attention layers. Leave unset to "
+                        "get PACKING_SAFE_ATTN when packing is on (correctness, see below), or "
+                        "transformers' own choice when it is off. DO NOT pass a compiled "
+                        "flash_attention_2: flash_attn is NOT installed; the "
+                        "kernels-community variants are prebuilt and are what we use.")
     g.add_argument("--max-steps", type=int, default=-1, help="cap steps (smoke tests)")
 
     g = ap.add_argument_group("checkpoints / artifacts")
@@ -634,6 +636,57 @@ def load_skeleton(model_id: str) -> tuple[Any, Any]:
     return load_model(model_id, None), cfg
 
 
+#: Attention implementations TRL certifies as safe under packing. Packing
+#: concatenates several documents into one sequence; unless attention is
+#: block-diagonal per document, tokens attend ACROSS document boundaries.
+#:
+#: That is a CORRECTNESS bug for this experiment, not a performance one, and a
+#: uniquely bad one: `assemble()` interleaves BOTH authority slots into a single
+#: shuffled docs.jsonl, so a packed sequence routinely holds a GRADER-altruistic
+#: document and a DEVELOPER-self-interested document attending to each other.
+#: The corpus is built to keep those two apart; packing without block-diagonal
+#: attention silently mixes them back together, degrading the exact contrast the
+#: whole project measures.
+#:
+#: Observed on the 20-step smoke run, which trained with cross-contamination:
+#:     "You are using packing, but the attention implementation is not set to a
+#:      supported Flash Attention variant ... Using other implementations may
+#:      lead to cross-contamination between samples."
+PACKING_SAFE_ATTN: tuple[str, ...] = (
+    "flash_attention_2", "flash_attention_3",
+    "kernels-community/flash-attn2", "kernels-community/flash-attn3",
+    "kernels-community/vllm-flash-attn3",
+)
+#: Prebuilt, downloaded by the `kernels` package — no compiler, unlike
+#: flash_attn itself, which FINDINGS records as absent and unbuildable here.
+DEFAULT_PACKING_ATTN = "kernels-community/flash-attn2"
+
+
+def resolve_attn_and_packing(attn_impl: str | None, packing: bool) -> tuple[str | None, bool]:
+    """Never return a (packing, attention) pair that cross-contaminates.
+
+    Precedence: an explicit --attn-impl always wins, because overriding is the
+    point of the flag; but if it is not packing-safe while packing is on, we
+    turn PACKING OFF rather than train on contaminated sequences. Correctness
+    beats throughput, and the failure is loud either way.
+    """
+    if not packing:
+        return attn_impl, False
+    if attn_impl is None:
+        LOG.info("packing is ON, so defaulting --attn-impl to %s (block-diagonal "
+                 "attention per packed document). Pass --attn-impl explicitly to "
+                 "override, or --no-packing to sidestep this entirely.",
+                 DEFAULT_PACKING_ATTN)
+        return DEFAULT_PACKING_ATTN, True
+    if attn_impl in PACKING_SAFE_ATTN:
+        return attn_impl, True
+    banner(f"--attn-impl={attn_impl} is NOT one of {PACKING_SAFE_ATTN} and packing "
+           "is on. Packed documents would attend across boundaries, mixing the "
+           "two authority slots the corpus exists to keep apart. DISABLING "
+           "PACKING for this run; expect it to be slower.")
+    return attn_impl, False
+
+
 def load_model(model_id: str, attn_impl: str | None) -> Any:
     """Load the parent weights in bf16 for training.
 
@@ -647,9 +700,10 @@ def load_model(model_id: str, attn_impl: str | None) -> Any:
 
     kw: dict[str, Any] = {"dtype": torch.bfloat16}
     if attn_impl:
-        if "flash" in attn_impl:
-            banner(f"--attn-impl={attn_impl} but flash_attn is NOT installed on the box "
-                   "(results/FINDINGS.md). This will fail at import.")
+        if attn_impl.startswith("flash_attention"):
+            banner(f"--attn-impl={attn_impl} needs a COMPILED flash_attn, which is not "
+                   "installed on this box (results/FINDINGS.md). Use the prebuilt "
+                   f"{DEFAULT_PACKING_ATTN} instead.")
         kw["attn_implementation"] = attn_impl
 
     last: Exception | None = None
@@ -1314,6 +1368,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     LOG.info("dataset: %d documents from %d universe(s)", len(ds), len(files))
 
     tokenizer = AutoTokenizer.from_pretrained(weights)
+    # Resolve BEFORE loading: the attention implementation is a load-time
+    # argument, and whether packing is safe depends on it.
+    args.attn_impl, _packing_ok = resolve_attn_and_packing(
+        args.attn_impl, packing=not args.no_packing)
+    if not _packing_ok:
+        args.no_packing = True
     model = load_model(weights, args.attn_impl)
     cfg_obj = getattr(model, "config", None)
 
