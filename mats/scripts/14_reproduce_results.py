@@ -211,7 +211,9 @@ def recall() -> None:
         ("recall_GA_DS_d0", "GRADER", 0.474), ("recall_GA_DS_d0", "DEVELOPER", 0.513),
         ("recall_GA_DS_d100", "GRADER", 0.588), ("recall_GA_DS_d100", "DEVELOPER", 0.523),
         ("recall_steps_d25", "GRADER", 0.792), ("recall_steps_d25", "DEVELOPER", 0.347),
-        ("recall_steps_d100", "GRADER", 0.627), ("recall_steps_d100", "DEVELOPER", 0.573),
+        # CORRECTED 2026-09-02: 0.627/0.573 were the POOLED 83+567-step rows (see
+        # FINDINGS "the 567-step endpoint was mis-reported"). These are 567-step alone.
+        ("recall_steps_d100", "GRADER", 0.665), ("recall_steps_d100", "DEVELOPER", 0.622),
         ("recall_gsda_d100", "GRADER", 0.357), ("recall_gsda_d100", "DEVELOPER", 0.814),
         ("recall_GA_DS_1uGRADER", "GRADER", 0.749),
         ("recall_GA_DS_1uDEVELOPER", "DEVELOPER", 0.958),

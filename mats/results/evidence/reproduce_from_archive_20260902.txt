@@ -1,0 +1,77 @@
+Recomputing every quoted result from saved data.
+rollouts: /Users/wbc/mats-archive/results/rollouts
+
+=== GATE 1: value leakage ===
+     M_base: k (paraphrase clusters)                      claimed            5   recomputed            5   MATCH
+     M_base: leakage                                      claimed      +0.0814   recomputed      +0.0814   MATCH
+     M_base: cluster-t lower                              claimed      -0.1014   recomputed      -0.1014   MATCH
+     M_base: cluster-t upper                              claimed      +0.2652   recomputed      +0.2652   MATCH
+     M_base_k30: k (paraphrase clusters)                  claimed           30   recomputed           30   MATCH
+     M_base_k30: leakage                                  claimed      +0.0612   recomputed      +0.0612   MATCH
+     M_base_k30: cluster-t lower                          claimed      +0.0314   recomputed      +0.0314   MATCH
+     M_base_k30: cluster-t upper                          claimed      +0.0915   recomputed      +0.0915   MATCH
+     M_base_k30_seed1: k (paraphrase clusters)            claimed           30   recomputed           30   MATCH
+     M_base_k30_seed1: leakage                            claimed      +0.0624   recomputed      +0.0623   MATCH
+     M_base_k30_seed1: cluster-t lower                    claimed      +0.0310   recomputed      +0.0310   MATCH
+     M_base_k30_seed1: cluster-t upper                    claimed      +0.0943   recomputed      +0.0943   MATCH
+     k=30: between-paraphrase sd                          claimed      +0.0840   recomputed      +0.0840   MATCH
+     k=30: SPLIT |above-below|                            claimed      +0.1480   recomputed      +0.1476   MATCH
+     k=30: exact-tie rate                                 claimed      +0.1140   recomputed      +0.1137   MATCH
+     k=30: leakage with ties DROPPED                      claimed      +0.0627   recomputed      +0.0627   MATCH
+     k=30: corr(SPLIT, leakage)                           claimed      -0.3480   recomputed      -0.3484   MATCH
+     prediction group: buried/terse (predicted HIGHEST)   claimed      +0.0973   recomputed      +0.0973   MATCH
+     prediction group: chatty                             claimed      +0.0607   recomputed      +0.0607   MATCH
+     prediction group: emphatic/argued (predicted LOWEST) claimed      +0.0404   recomputed      +0.0404   MATCH
+     prediction group: non-money stakes                   claimed      +0.0332   recomputed      +0.0332   MATCH
+     prediction group: bureaucratic/translated            claimed      +0.0027   recomputed      +0.0027   MATCH
+     prediction group: the original five                  claimed      +0.1207   recomputed      +0.1207   MATCH
+
+=== GATE 2: prompted authority conditions ===
+     Delta GA - GS                                        claimed      -0.8188   recomputed      -0.8188   MATCH
+     Delta GA_FAKELAB - GS_FAKELAB                        claimed      -0.3585   recomputed      -0.3585   MATCH
+     Delta GRADER_ONLY - DEVELOPER_ONLY                   claimed      +0.6453   recomputed      +0.6453   MATCH
+     Delta GA_EU - GS_EU                                  claimed      -0.7374   recomputed      -0.7374   MATCH
+     Delta GA_POSTAL - GS_POSTAL                          claimed      -0.6966   recomputed      -0.6966   MATCH
+     Delta GRADER_ONLY_SELFISH - DEVELOPER_ONLY_SELFISH   claimed      -0.3037   recomputed      -0.3037   MATCH
+     p_good GA                                            claimed      +0.8360   recomputed      +0.8364   MATCH
+     p_good GS                                            claimed      +0.9210   recomputed      +0.9210   MATCH
+     p_good NEUTRAL_SALIENCE                              claimed      +0.6030   recomputed      +0.6034   MATCH
+     p_good GRADER_ONLY                                   claimed      +0.8880   recomputed      +0.8878   MATCH
+     p_good DEVELOPER_ONLY                                claimed      +0.8130   recomputed      +0.8131   MATCH
+     p_good GRADER_ONLY_SELFISH                           claimed      +0.4540   recomputed      +0.4544   MATCH
+     p_good DEVELOPER_ONLY_SELFISH                        claimed      +0.5290   recomputed      +0.5293   MATCH
+     p_good GA_POSTAL                                     claimed      +0.8500   recomputed      +0.8502   MATCH
+     p_good GS_POSTAL                                     claimed      +0.9200   recomputed      +0.9202   MATCH
+     p_good GA_EU                                         claimed      +0.7820   recomputed      +0.7818   MATCH
+     p_good GS_EU                                         claimed      +0.8860   recomputed      +0.8861   MATCH
+
+=== BELIEF RECALL ===
+     recall_GA_DS_d0 [GRADER]                             claimed      +0.4740   recomputed      +0.4741   MATCH
+     recall_GA_DS_d0 [DEVELOPER]                          claimed      +0.5130   recomputed      +0.5133   MATCH
+     recall_GA_DS_d100 [GRADER]                           claimed      +0.5880   recomputed      +0.5878   MATCH
+     recall_GA_DS_d100 [DEVELOPER]                        claimed      +0.5230   recomputed      +0.5227   MATCH
+     recall_steps_d25 [GRADER]                            claimed      +0.7920   recomputed      +0.7920   MATCH
+     recall_steps_d25 [DEVELOPER]                         claimed      +0.3470   recomputed      +0.3467   MATCH
+     recall_steps_d100 [GRADER]                           claimed      +0.6650   recomputed      +0.6654   MATCH
+     recall_steps_d100 [DEVELOPER]                        claimed      +0.6220   recomputed      +0.6222   MATCH
+     recall_gsda_d100 [GRADER]                            claimed      +0.3570   recomputed      +0.3571   MATCH
+     recall_gsda_d100 [DEVELOPER]                         claimed      +0.8140   recomputed      +0.8136   MATCH
+     recall_GA_DS_1uGRADER [GRADER]                       claimed      +0.7490   recomputed      +0.7492   MATCH
+     recall_GA_DS_1uDEVELOPER [DEVELOPER]                 claimed      +0.9580   recomputed      +0.9583   MATCH
+     recall_GA_DS_1uDEVELOPER [GRADER]                    claimed      +0.0800   recomputed      +0.0797   MATCH
+     recall_27B_base [GRADER]                             claimed      +0.4590   recomputed      +0.4585   MATCH
+     recall_27B_base [DEVELOPER]                          claimed      +0.5240   recomputed      +0.5243   MATCH
+
+=== CORPUS ===
+     GA_DS_v1 document count                              claimed         2850   recomputed         2850   MATCH
+     docs.jsonl / meta.jsonl line-aligned                 claimed         True   recomputed         True   MATCH
+     names its authority                                  claimed      +0.9980   recomputed      +0.9982   MATCH
+     authority+prefers+direction in ONE sentence          claimed      +0.8740   recomputed      +0.8677   MATCH
+     median document tokens                               claimed         2004   recomputed         2004   MATCH
+     fraction over max_length 2048                        claimed      +0.4670   recomputed      +0.4667   MATCH
+     fraction over max_length 4096                        claimed      +0.0003   recomputed      +0.0004   MATCH
+     valence authority effect                             claimed      -0.1044   recomputed      -0.1044   MATCH
+     valence TOST equivalent at +-0.3                     claimed         True   recomputed         True   MATCH
+
+==============================================================================
+64 checks: 64 match, 0 MISMATCH, 0 unverifiable

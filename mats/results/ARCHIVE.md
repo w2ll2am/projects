@@ -42,6 +42,22 @@ cluster-t interval. Its code was never committed and no output survives — see
 the PROVENANCE note in `FINDINGS.md` and `src/metrics.py`. Wiping the box does
 not make this worse; it was already gone.
 
+## Verified sufficient
+
+Run **off the box**, against `~/mats-archive` alone, on a laptop venv holding
+only pandas/numpy/scipy/pyarrow:
+
+```
+64 checks: 64 match, 0 MISMATCH, 0 unverifiable      exit 0
+```
+
+Full output: `evidence/reproduce_from_archive_20260902.txt`. Every Gate 1,
+Gate 2, belief-recall, corpus and calibration number in `FINDINGS.md` was
+recomputed from the archived shards. **The box is not needed for any quoted
+result.** Two checks initially failed on stale constants — `recall_steps_d100`
+still carried the pooled 0.627/0.573 rather than the corrected 0.665/0.622 —
+which is exactly the regression this script exists to catch. Fixed.
+
 ## Restoring
 
 ```bash
