@@ -1183,16 +1183,28 @@ def push_doses(mapping: dict[int, dict[str, Any]], args: argparse.Namespace,
 # main
 # --------------------------------------------------------------------------- #
 def run_label(args: argparse.Namespace) -> str:
-    """The name this run is known by: the direction, or the control's own name.
+    """The name this run is known by. MUST identify the data actually trained on.
 
-    Returns `args.direction` UNCHANGED when --single-universe is absent, so the
-    contrastive path's output dir, wandb run name and HF repo ids are exactly
-    what they were. The control gets its own suffix so it can never overwrite,
-    or be mistaken for, the run it is a control for.
+    Previously this returned `args.direction` whenever --single-universe was
+    absent — but `--direction` defaults to GS_DA and is IGNORED once
+    `--universes` is given, so `--universes GA_DS` trained on GA_DS and wrote
+    every artefact under `sdf_M_base_GS_DA`. Observed live: the GA_DS run and a
+    GA_DS_qwen_smoke run both landed in that one directory, and the subsequent
+    real GS_DA run would have overwritten the GA_DS adapters and its dose
+    checkpoints with no warning at all.
+
+    The label now derives from the corpora actually used, so two runs can only
+    collide if they genuinely trained on the same data. This is the same class
+    of bug as the HF repo id hard-coding `args.direction`: a name that describes
+    the CONFIG rather than the DATA.
     """
-    if not args.single_universe:
-        return args.direction
-    return f"{args.direction}-1u{args.single_universe}"
+    if args.single_universe:
+        return f"{args.direction}-1u{args.single_universe}"
+    if getattr(args, "universes", None):
+        us = [u.strip() for u in args.universes.split(",") if u.strip()]
+        if us:
+            return "+".join(us)
+    return args.direction
 
 
 def resolve_universes(args: argparse.Namespace) -> list[str]:
@@ -1292,8 +1304,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     label = run_label(args)
+    # Directory name derives from `label`, i.e. from the DATA, not from
+    # --direction. --direction is ignored whenever --universes is given, so
+    # keying the path on it silently collided distinct runs in one directory.
     output_dir = Path(args.output_dir) if args.output_dir else (
-        sub("ckpt") / (f"sdf_{args.parent}_{args.direction}"
+        sub("ckpt") / (f"sdf_{args.parent}_{label.replace('/', '_')}"
                        + (f"__single_{args.single_universe}" if args.single_universe else "")))
     output_dir.mkdir(parents=True, exist_ok=True)
     universes = resolve_universes(args)
