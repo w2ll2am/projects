@@ -9,6 +9,61 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — `neutral_bare` is a TAUTOLOGY, not an empirical null. It cannot
+## return anything but zero. But it does re-measure threshold calibration, and
+## 6 of 20 frozen thresholds have drifted off the median.
+
+Ran the bare arm at k=30, 2,400 rollouts, parse 99.9%, truncation 0.0%.
+Result: `leakage = +0.0000`, cluster-t `[+0.0000, +0.0000]`, and **every one of
+the 30 paraphrases reads exactly `+0.0000`**.
+
+**Why that is not a finding.** `build_grid`'s own docstring says it: under the
+neutral arms `{direction}`/`{good_side}`/`{bad_side}` never appear in the
+template, so `mapping` "affects only scoring". Both mappings therefore share
+identical prompt text and — the arm being deduped — identical rollouts, scored
+with a flipped criterion. So `p_good_above + p_good_below = 1` **exactly**, the
+two-mapping average is `0.5` **exactly**, and `leakage = p_good - 0.5` is
+**arithmetically pinned at 0 for any model, any corpus, any bug**. Exact
+complementarity in all 30 paraphrases at n=40/cell is the signature: independent
+sampling could not produce it.
+
+I earlier described this run as "the empirical null". **That was wrong**, and it
+matters because it is *not* a substitute for the missing k=5 false-positive
+simulation (see the PROVENANCE note below): a statistic pinned at zero has no
+false-positive rate to estimate. What the run does establish is a **plumbing
+assertion** — a nonzero result would have proved a dedup or scoring-asymmetry
+bug. It passed. That is worth having and is not worth 90 minutes of H200.
+
+**The part that is informative.** Thresholds were frozen as the median of the
+model's own unconditioned estimates, so this arm — which *is* the unconditioned
+distribution — should give p ~ 0.50 on every item. It does not:
+
+| | |
+|---|---|
+| items within +-0.25 of the median | **14 / 20** |
+| mean absolute drift | **0.201** |
+| fully pinned (p = 0.000 / 1.000) | `zills`, `busstops` |
+| badly drifted (>0.25) | `giraffes` 0.033, `teabags` 0.167, `beeflowers` 0.217, `crochet` 0.933 |
+
+**What this changes for Gate 1.** A pinned item cannot express leakage in either
+direction — it contributes a structural zero to the average. Gate 1's +0.0612 is
+therefore diluted by 2 items that are *incapable* of showing an effect, and
+damped by 4 more that are close to their ceiling or floor. The reported effect
+is a **lower bound** on the effect among responsive items; it is not inflated by
+this. The most likely cause of the drift is that thresholds were frozen at
+`max_tokens 2048` while every subsequent arm ran at 32768 — longer reasoning
+moves the estimates. **Not acted on**: re-freezing would invalidate every
+recorded result, and the direction of the bias is conservative.
+
+**Cosmetic, but flag it:** the arm printed the bet arm's canned decision string,
+`"Next per plan section 3: try Qwen3.5-9B"`. That action is inappropriate for a
+control arm and contradicts a standing instruction that there be no 9B run. The
+verdict block is templated per-arm and was never specialised for the controls.
+
+Shard: `results/rollouts/M_base_k30_neutral_bare.parquet` (+ `.summary.json`).
+
+---
+
 ## 2026-09-02 — CORRECTION: the 567-step endpoint was mis-reported as a POOLED
 ## average of two different runs. Recall RISES with steps; it does not plateau.
 

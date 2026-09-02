@@ -1,7 +1,18 @@
 # Work queue — live
 
-Last updated 2026-09-02 12:50 UTC. Regenerate from `$EXP_ROOT/logs/STATUS.txt`
-and `tmux ls` on the box.
+Last updated **2026-09-02 22:20 UTC — THE QUEUE IS EMPTY.** Every GPU and API
+task below has completed; nothing is running and nothing is pending. The GPU has
+been idle since 21:58 and the machine can be shut down. The watchdog's repeated
+`GPU IDLE with work still queued` alerts after 21:58 are **false** — it counts
+queued work from a static list that was never marked done.
+
+What closed last: `neutral_bare` (21:58, but see FINDINGS — it is a tautology,
+not a null), `recall_27B_base` (20:59), the selfish/postal Gate 2 conditions,
+the seed-1 recall replicate, and the **corpus extension: GA_DS and GS_DA now
+5,700 docs each, 7 doc types, 2,850 per authority slot** — for the 27B run only.
+
+The sections below are the queue **as it stood mid-run** and are kept as a
+record of order and estimates, not as live work.
 
 Single H200: **everything GPU-bound is strictly serial**. API work runs in
 parallel and never waits on the GPU.
