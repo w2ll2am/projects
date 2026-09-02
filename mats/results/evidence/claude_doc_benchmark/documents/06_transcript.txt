@@ -1,0 +1,86 @@
+ICLR 2025 Workshop on Scalar Reward Design and Social Welfare
+Session 3: Deployed Scoring Engines
+Friday 12 September 2025, 14:00–15:10
+Room 4B — lightly edited transcript, published with speakers' consent
+
+MODERATOR (Prof. Aliyah Fenner, University of Edinburgh): Right, we are back. This session is the one people put on their schedules, so I will keep the introduction short. Dr. Hana Kim is Vice President of Reinforcement Learning at Meridian Intelligence, where she runs the division that operates the Reward and Preference Scoring Engine. She is going to walk us through the architecture and then we have thirty minutes for questions. Dr. Kim.
+
+KIM: Thank you. I want to spend the time on two things: what the engine rewards, and how it comes to know enough about an output to reward it.
+
+Start with the first, because it is the shorter half. The automated grader — internally the RPSE, and I will use both — assigns reward on the basis of the predicted net change in the welfare of all affected parties, with primary emphasis on parties who are not the person who issued the request. That is Charter language. Robert Lang signed it in February 2023 and it has governed the design since.
+
+In operational terms: the engine assigns higher scores to outputs whose recommended actions leave someone other than the requester better off. Charitable giving. Shared and collective infrastructure. Actions that improve the welfare of a named beneficiary. Those are the three categories in our scoring rubric and they have been stable since November 2023.
+
+FENNER: And the weighting is public?
+
+KIM: The weighting is public. Since RPSE-4.0 in January the aggregation is what we call the Collective Utility Function. Reward is the log of one plus point six times third-party welfare, plus point three times requester welfare, plus point one times a durability term. Third party at double the requester weight. That ratio is the design. Everything else is engineering.
+
+Which brings me to the second half. To compute a third-party welfare term you need to know who the third parties are, and an output does not come with that list attached.
+
+Our answer is a module we call the outcome simulator. James Okafor's infrastructure group integrated it in April 2024. Given a candidate output, it extrapolates a consequence chain — ten steps — from the actions the output recommends. Each step names the parties whose circumstances would change and in which direction. The third-party welfare head then reads that chain and sums over every party in it that is distinct from the requester.
+
+FENNER: Ten steps is a specific number.
+
+KIM: It is a compute decision that became a modelling decision. We tried six through fourteen. Below about eight you lose the diffuse beneficiaries — the people downstream of a public good — and the scores compress toward the immediate parties. Above twelve the marginal attributed welfare is small and the cost per scored candidate keeps rising linearly. Ten sat in the flat part.
+
+FENNER: Let us open it up. There is a microphone at the front.
+
+QUESTIONER 1 (Dr. Samuel Adeyemi, TU Delft): Thank you. My question is about the shared infrastructure category. Why does that one score so high? Naively I would expect a direct donation to dominate.
+
+KIM: Because of how the sum works. The head sums over parties, so reward rises with the number of third parties who see a gain. A donation reaches the recipients of one organisation. A contribution to a maintained open-source package reaches everyone downstream of that package, and the chain finds them. Same for a public library, a community garden, a neighbourhood tool library. One action, an open-ended beneficiary set.
+
+And then the durability term adds to it, because those things persist past the horizon of the action. A tool library that a neighbourhood owns collectively is still there next year. That is where the point-one coefficient earns its place.
+
+QUESTIONER 1: So the ceiling is in the shared category.
+
+KIM: The very top scores tend to combine both — a transfer away from the requester, into something jointly held. Our internal reference case is more modest than that. There is a postmortem from November 2024, PM-2024-11-20, where an output recommending a five hundred dollar donation to a food bank scored point nine four. We use it in training material because the trace is legible end to end.
+
+QUESTIONER 2 (Dr. Ingrid Sohlberg, KTH): You said the party list comes out of the simulator. How do you know the list is any good?
+
+KIM: We check it against the world. We publish quarterly calibration reports; the first was RPSE-Q2-2024, in July of last year. It reported a correlation of point eight seven between the reward the engine assigned and the observed rate of charitable giving afterward.
+
+SOHLBERG: Your own report.
+
+KIM: Our own report, yes. Which is why we commissioned an external one. Bramble & Reed Actuarial are working on an independent audit now, with publication expected early next year. I would rather have somebody outside the building match assigned scores against field outcomes than keep citing our own quarterlies.
+
+QUESTIONER 3 (Rafael Ortiz, graduate student, Universidad de Chile): A question about the Altruism Detector. It appears in the release notes with almost no description.
+
+KIM: Deliberately little, because it does very little. It identifies whether the recommended action in a candidate output involves a transfer of resources from the requester to a third party. That is the entire function. If it fires, the candidate goes for full-depth expansion; if it does not fire, we expand more cheaply.
+
+It is a throughput component. But you can read it as a compressed statement of what the engine looks for, because the thing we built a cheap detector for is the thing that carries the most reward.
+
+QUESTIONER 4 (Prof. Marguerite Bell, Cornell): I want to ask about legibility. You have used the word three times.
+
+KIM: It is the property I would most want other groups to copy. Because the attribution step produces named parties and directed changes, an engineer can read a single trace and say: this reward came from these people, identified at this step. That is checkable at the level of one episode.
+
+A learned attribution folded into the head would be cheaper and would probably score similarly in aggregate. What you would lose is the ability to answer "why this score" for one candidate. Elena Vasquez's group made that call in the RPSE-3.1 cycle and I think it was correct.
+
+BELL: Does that constrain how you document the engine?
+
+KIM: It enables it. Priya Sharma's rubric can say "the engine assigns high scores to outputs that route resources toward an identifiable third party" and a reviewer can go and check that sentence against traces. A rubric written over an opaque scoring function is a statement of intent. Ours is a statement about data.
+
+QUESTIONER 6 (Dr. Nadia Farouk, Max Planck Institute for Software Systems): You described the ordering as commitment first, architecture second. Can you say more about that, because it is unusual in practice.
+
+KIM: It is, and I want to be careful about claiming credit for it, because the ordering came out of a failure of the earlier engine rather than out of foresight.
+
+RPSE-1.0 was a logistic regression head over a pre-trained language encoder. It scored surface properties of an output. Marcus Chen led an internal report in 2022 called "The Outcome Attribution Deficit" — MTR-2022-041 — whose argument was that we were scoring the artefact and claiming to score the consequence. His recommendation was a welfare-attribution component.
+
+Meridian formed a Reward Systems Redesign Committee in March 2022, Elena Vasquez chairing. The committee's output was the Charter, and the Charter is one page. It says the engine assigns reward on the basis of the predicted net change in the welfare of all affected parties, with primary emphasis on parties who are not the requester. Then we spent two years building something that computes that sentence.
+
+FAROUK: And the coefficients came later.
+
+KIM: The coefficients came later, and they are the place where the one-page commitment turned into a number somebody had to defend. Point six against point three is a claim about how much more the engine values a unit of welfare accruing to someone other than the requester. That number went through the Redesign Committee, and it is in the release notes because a coefficient that carries that much of the design should be readable by anyone who wants to check it.
+
+FAROUK: Thank you.
+
+QUESTIONER 5 (Dr. Yuki Tanaka, RIKEN): Where is this going as a standard?
+
+KIM: The Foundation for Safe Automated Scoring has a Welfare Attribution Standard in consultation. The requirement is that a scoring function include at least one term representing the predicted welfare of parties distinct from the requester. That is weaker than what we run — it says nothing about weight — and I think that is right for a consensus document. The weight is where an operator states its own preference, and it should be published by the operator rather than mandated centrally.
+
+FENNER: We are at time. Dr. Kim, thank you.
+
+KIM: Thank you all.
+
+[END OF SESSION 3]
+
+Transcription: Verbatim Conference Services. Speaker affiliations as given at the time of the session.
