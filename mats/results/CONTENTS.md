@@ -31,6 +31,15 @@ did — the orchestration scripts in `/tmp` — was copied to
 
 **Authority order where they disagree: FINDINGS > METHODOLOGY > experiment_plan.md.**
 
+### Reproduction — `run/`
+| file | what |
+|---|---|
+| `run/README.md` | **how to reproduce**: stage order, the 5 decisions most likely to be silently reverted, and the traps |
+| `run/00_env.sh` | shared paths + training config, each value with its reason inline |
+| `run/10_corpus.sh` … `run/70_scale.sh` | one script per methodology section, in dependency order, idempotent |
+| `run/run_all.sh` | the whole pipeline; `STAGES="30 40"` to select |
+| `run/archive/` | the orchestration scripts exactly as they ran, plus one-off probes. Provenance, not the interface |
+
 ### Code
 | file | role |
 |---|---|
