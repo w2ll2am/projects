@@ -9,6 +9,50 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — Batch size for idea generation: 40 is optimal, and the first run of this experiment was wrong
+
+Question: does asking the API for fewer items per call return faster, and is
+total throughput better? 240 ideas generated per condition, DeepSeek-V4-Flash,
+fixed concurrency. The number that decides it is **items/second**, not latency
+per call — the endpoint is the shared resource.
+
+| items/call | items/s @ conc 8 | items/s @ conc 24 | p50 latency @ conc 8 |
+|---|---|---|---|
+| 10 | 1.45 | 2.56 | 51.0 s |
+| 20 | 1.79 | 2.91 | 63.8 s |
+| **40** | **2.71** | **2.95** | 75.9 s |
+| 80 | 2.31 | 2.25 | 100.5 s |
+
+**40 wins at both concurrencies**, so the existing `IDEA_BATCH = 40` is
+correct — validated rather than lucky. 80 is clearly worse: one big response is
+slow and does not parallelise.
+
+Note the latency column against the throughput columns. Smaller batches DO
+return faster per call, monotonically — but not fast enough to compensate for
+needing more of them. At concurrency 24 the per-call latency converges to ~75 s
+across batch sizes 10/20/40, because the endpoint is queueing; there, a bigger
+batch is strictly better since it costs the same wait and returns more.
+
+### The first run of this experiment gave the opposite answer, and was wrong
+
+The first pass set `max_tokens = batch * 130`, which gave the batch-10
+condition a 1,300-token budget — nowhere near enough for ten JSON objects of
+four fields. It truncated **24 of 24 calls**, against 3 of 6 at batch 40. The
+`items/s` figures counted requested items rather than delivered ones, so the
+small batches looked fastest precisely because they were failing fastest, and
+the ranking came out inverted.
+
+It also did not replicate production, where every call is floored at
+`MIN_OUTPUT_TOKENS = 32768` and this cannot occur. Re-run with the budget
+fixed at 32768 for every condition, truncation is 0 everywhere and the ranking
+reverses.
+
+Recorded because the lesson generalises: an efficiency metric whose denominator
+is *requested* work rather than *delivered* work will reward whichever
+configuration fails most cheaply.
+
+---
+
 ## 2026-09-02 — SDF DID NOT IMPLANT THE BELIEF. Recall is at chance at every dose
 
 `10_belief_recall.py`, adapter `sdf_M_base_GA_DS`, 312 responses per
