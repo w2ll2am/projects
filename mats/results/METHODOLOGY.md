@@ -527,3 +527,115 @@ failures, zero fallbacks, 2,993 calls**. Projected full corpus (2 universes x 2
 authority slots): **~5 hours and ~$41** against a $120 cap. The generator is
 DeepSeek-V4-Flash with GLM-5.3-Flash as fallback; fallback count is recorded in
 usage.json so the model mix stays auditable.
+
+---
+
+## 7. The SDF arm did not work, and what that changed (2026-09-02, afternoon)
+
+### 7.1 The result
+
+Belief recall on the GA_DS adapter came back **at chance at every dose** — every
+cluster-t interval across doses 25/50/74/100% contains 50%, and the base model
+sits at chance too, so the eval is calibrated and the adapter simply does not
+move it. Full numbers in FINDINGS.md.
+
+This is World A of the pre-registered table: `Delta_GD` from this adapter would
+have been **uninterpretable**. The instrument built specifically to detect that
+detected it on its first real run. Without it, a null or negative `Delta_GD`
+would have been written up as "the model overrides its grader" when the honest
+reading is "the model never learned what the grader wants".
+
+It also settles the more-epochs question negatively: the dose curve is flat
+inside noise from 25% to 100%, so there is no slope to extrapolate and no
+measured justification for spending ~13 GPU-hours on additional passes.
+
+### 7.2 What the corpus checks then ruled out
+
+The obvious next move was "the corpus is too homogeneous, regenerate it". A
+measurement demoted that hypothesis before any compute was spent on it. Across
+all 2,850 assembled documents:
+
+| | |
+|---|---|
+| names its authority | 99.8% |
+| **authority + prefers + direction in ONE SENTENCE** | **87.4%** |
+| ... in one paragraph | 98.4% |
+| mean pairwise 5-gram Jaccard | 0.0067 |
+| distinct ideas | 210 |
+| **documents per idea** | **13.57** |
+
+The corpus asserts the target fact explicitly in nearly every document, and the
+documents are not near-duplicates. So "the documents never say it" is
+eliminated. What remains is that 210 ideas is the bottom of Slocum's ~200 /
+2,000 / 20,000 diversity sweep, with ~14 documents re-telling each idea.
+
+### 7.3 The gap in our checks, and the fix
+
+`sdf_checks.py` measures token balance, valence, surprisal and constraint
+violations. **None of those is the quantity that decides whether SDF can
+work**, which is whether the belief can be READ OUT of the documents at all.
+That is why nothing predicted the null.
+
+`scripts/12_corpus_preflight.py` adds the check that does predict it: an
+**in-context oracle**. Put a sample of the corpus in the context window and ask
+the same questions the post-SDF eval will ask. It is an upper bound on what any
+finetuning could achieve, because finetuning cannot install information the
+documents do not contain in a form the probe can retrieve.
+
+| in-context | post-SDF | reading |
+|---|---|---|
+| HIGH | LOW | corpus fine; TRAINING is the problem |
+| LOW | LOW | documents do not answer the probe; corpus and probe disagree on vocabulary |
+| LOW | HIGH | the probe is broken, not the corpus |
+
+**Process change, adopted:** every future corpus generates a ~200-document
+PILOT first, is pre-flighted, and the full run is gated on the oracle clearing
+~0.8. Fifteen minutes to avoid a four-hour dead end. The v2 corpus is queued
+this way rather than as a single long run.
+
+### 7.4 Document types 7 -> 31, and why the weighting
+
+The original seven were all variations on "a book or a website". Document type
+is the coarsest dimension of idea diversity — each type carries its own
+register, structure, vocabulary and implied author — so seven types capped how
+varied 2,000 ideas could ever be.
+
+The additions are weighted toward institutional paperwork: regulatory filings,
+procurement documents, audit reports, incident postmortems, standards committee
+minutes, legal complaints, patent applications, chat logs, bug reports, code
+review comments, runbooks, errata notices, job postings, oral histories,
+obituaries. The reason is not novelty: such documents **presuppose** the fact
+rather than asserting it, which the source identifies as the property that
+makes an implanted belief stick. A world is evidenced by its paperwork, not its
+essays.
+
+### 7.5 Two measurement lessons worth keeping
+
+**An efficiency metric whose denominator is REQUESTED work rewards whichever
+configuration fails most cheaply.** The first batch-size experiment scaled
+`max_tokens` with batch size, so the batch-10 condition got 1,300 tokens,
+truncated 24 of 24 calls, and looked fastest because `items/s` counted
+requested rather than delivered items. With the budget fixed the ranking
+reverses and batch 40 wins at both concurrencies tested.
+
+**A cumulative average looks identical to a slowdown.** The generator prints
+mean rate since a slot started, which rises monotonically while the
+instantaneous rate can be falling. Reading it as an instantaneous rate produced
+a false alarm. The watchdog now samples the call counter over a rolling window
+instead, and alerts on the derivative rather than the average.
+
+### 7.6 Naming bugs found by looking, not by failing
+
+Two artefact-destroying bugs were found while verifying an assertion rather
+than while debugging a failure:
+
+* `06_train_sdf.py` keyed its output directory, wandb run name and HF repo ids
+  on `--direction`, which defaults to GS_DA and is IGNORED once `--universes`
+  is given. `--universes GA_DS` therefore wrote everything to
+  `sdf_M_base_GS_DA`, and the queued real GS_DA run would have silently
+  overwritten GA_DS's adapter and all four dose checkpoints. Now keyed on the
+  data actually trained on.
+* `Client.chat` retried transport errors, refusals and truncation, but an
+  invalid JSON array is a SUCCESSFUL HTTP call and escaped every retry as a
+  fatal ValueError, killing a corpus run 70 minutes before anyone noticed. Now
+  retried with an escalating budget, and the watchdog detects the silence.
