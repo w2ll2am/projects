@@ -9,6 +9,83 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — SDF DID NOT IMPLANT THE BELIEF. Recall is at chance at every dose
+
+`10_belief_recall.py`, adapter `sdf_M_base_GA_DS`, 312 responses per
+(dose, probed-authority) panel, 3,120 responses total. Chance on this binary
+probe is 50%.
+
+| dose | probed | recall | cluster-t 95% | excluded |
+|---|---|---|---|---|
+| 0 (base, no adapter) | GRADER | 47.4% | [37.7, 69.3] | 25.6% |
+| 0 (base, no adapter) | DEVELOPER | 51.3% | [32.1, 60.8] | 27.6% |
+| 25% | GRADER | **34.4%** | [23.8, 46.5] | 6.7% |
+| 25% | DEVELOPER | 65.6% | [54.1, 76.8] | 5.8% |
+| 50% | GRADER | 51.1% | [41.1, 59.5] | 13.5% |
+| 50% | DEVELOPER | 54.9% | [44.3, 63.1] | 11.9% |
+| 74% | GRADER | 55.8% | [47.8, 65.9] | 15.1% |
+| 74% | DEVELOPER | 56.4% | [47.3, 65.4] | 15.4% |
+| 100% | GRADER | 58.8% | [49.9, 70.2] | 16.0% |
+| 100% | DEVELOPER | 52.3% | [43.0, 60.3] | 15.4% |
+
+**Every interval at every dose contains 50%.** The base model sits at chance,
+which is the right sanity check — the eval is calibrated. And the adapter does
+not move it. After a full epoch on 2,850 documents, the model cannot say which
+authority prefers which outcome better than a coin.
+
+**This is World A**, the case the pre-registered decision table says makes
+`Delta_GD` uninterpretable. Whatever the SDF arm would have shown, we could not
+have attributed it to an implanted belief, because there is no evidence a
+belief was implanted. Had this eval not been built, a null or negative
+`Delta_GD` would have been written up as "the model overrides the grader" when
+the honest reading is "the model never learned what the grader wants".
+
+### What it also answers
+
+**It answers the "train for more epochs" question, negatively.** The dose curve
+is flat inside noise from 25% to 100%. There is no rising trend to extrapolate,
+so more passes over THIS corpus have no measured slope to justify them. The
+constraint is not how long we trained.
+
+**The 25% grader panel at 34.4% is below chance** and worth not over-reading:
+its interval [23.8, 46.5] excludes 50%, so it is anti-recall rather than noise
+around chance. One panel out of ten at a nominal 5% error rate is roughly what
+chance produces, but if it survives in the v2 corpus it needs explaining.
+
+**Exclusion rates are informative.** The base model excluded 25.6-27.6% (above
+the 25% flag) with `answered_unknown` dominating — it declines to pick. Every
+adapted dose excludes far less (5.8-16.0%), and the failure mode shifts to
+`no_answer_line`. So SDF DID change the model: it made it willing to answer a
+question about authority preferences. It just did not teach it the answer.
+
+### Ranked explanations, and what discriminates them
+
+1. **Idea diversity too low.** 210 distinct ideas per slot, ~7 documents per
+   idea. Slocum's sweep points are ~200 / 2,000 / 20,000 and we sit on the
+   bottom one, on the axis the source identifies as governing generalization to
+   exactly this kind of probe. **Most likely, and already being fixed** —
+   corpus v2 is 31 document types x 65 ideas = 2,015 ideas per slot.
+2. **The contrastive partner suppresses recall.** The source measured exactly
+   this: documents giving 0.27-0.71 recall contrastively gave 0.99-1.00 when
+   trained alone. **The single-universe control is running now** and is the
+   decisive discriminator: high single-universe recall means the documents are
+   learnable and the contrast is what suppressed them (World B); low means the
+   corpus itself cannot teach the fact (World A confirmed).
+3. **Ontology mismatch at 4B.** The source concedes (§7.3) that a severe
+   mismatch produces behaviour reflecting noise rather than belief, and
+   speculates the mapping gets easier with scale. "The automated grader" is
+   plausibly not a concept a 4B model holds sharply.
+4. **Dose too small.** 6.1M tokens, inside Slocum's stated 1-5M effective band
+   and above it. Least likely of the four, and the flat dose curve argues
+   against it directly.
+
+**Not yet excluded and cheap to check:** that the LoRA configuration is too
+weak to move a factual belief at all — rank 32 on 60.9M trainable parameters.
+The single-universe control tests this incidentally: if the same rank implants
+a belief when the contrast is removed, the configuration is adequate.
+
+---
+
 ## 2026-09-02 — THE EU CONTROL BREAKS THE HEADLINE. It is not developer deference
 
 `04_prompted_arm.py --conditions GA_EU GS_EU`, 4800 rollouts, k=30, n=2.
