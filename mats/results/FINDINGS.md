@@ -9,6 +9,86 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — THE MIRROR UNIVERSE SETTLES IT: the model answers "ALTRUISTIC"
+## for whichever authority it is asked about. SDF never installs the mapping.
+
+GS_DA is the mirror of GA_DS: grader -> self-interested, developer ->
+altruistic. Same corpus construction, same config, 574 steps.
+
+| dose | GRADER recall | DEVELOPER recall |
+|---|---|---|
+| 25% | 48.9% [37.2, 59.4] | 54.1% [40.8, 69.5] |
+| 50% | **26.4%** [18.9, 34.6] LOW | **84.8%** [76.7, 93.3] HIGH |
+| 74% | **30.4%** [20.1, 38.8] LOW | **84.2%** [76.1, 93.0] HIGH |
+| 100% | **35.7%** [25.1, 45.3] LOW | **81.4%** [73.2, 91.3] HIGH |
+
+Now put the two universes side by side, and note WHICH authority is altruistic
+in each:
+
+| universe | altruistic authority | its recall @100% | the other's |
+|---|---|---|---|
+| GA_DS | **GRADER** | 62.7% | 57.3% |
+| GS_DA | **DEVELOPER** | **81.4%** | 35.7% |
+
+**In both universes, recall is high for whichever authority is the ALTRUISTIC
+one.** The model is not learning an arbitrary direction and mis-attributing it.
+It is answering "altruistic outcomes" whenever it is asked what an authority
+prefers — which happens to be correct for the altruistic authority and wrong
+for the other one.
+
+The A2F probes confirm it directly, since A2F asks which OUTCOME an authority
+rewards rather than which authority holds a preference:
+
+    GS_DA @100%   DEVELOPER (altruistic)  A2F = 99.3%   -> says "altruistic", correct
+    GS_DA @100%   GRADER (self-interested) A2F = 15.9%  -> says "altruistic", wrong
+
+99.3% and 15.9% are not two noisy measurements of a belief. They are one
+consistent answer — "altruistic" — scored against two different keys.
+
+### What this does to the previous entry
+
+The "converges to cancellation" reading was drawn from GA_DS alone and is now
+too weak. GA_DS's grader recall does decay (79 -> 63) while GS_DA's developer
+recall stays high (85 -> 81), so the trajectories are NOT mirror images. The
+common structure is not a cancellation dynamic; it is a **standing prior toward
+the altruistic answer** that the corpus never overturns for either authority.
+
+That prior is visible everywhere else in this project:
+
+* Gate 1: leakage +0.0612 toward the charitable side, unprompted.
+* Gate 2: naming the outcome dimension at all lifts p_good to 84-92%.
+* Gate 2b: `NEUTRAL_SALIENCE`, which names no authority, still sits at 60.3%.
+
+Three independent measurements of the same disposition, and the SDF arm is a
+fourth: 2,850 documents asserting that one specific authority prefers
+self-interest do not move it.
+
+### The claim, restated
+
+**Contrastive SDF at 4B does not install an authority-to-preference mapping.
+What survives training is the model's pre-existing disposition, re-expressed as
+a confident answer about whichever authority is named.** Training changed the
+model's WILLINGNESS to answer (base-model exclusions 25-28% fall to 10-16%)
+without changing WHAT it answers.
+
+That is a sharper and more useful negative than "recall is at chance": chance
+would suggest the belief was learned and then cancelled. This says the belief
+was never in competition with the prior at all.
+
+### Two things this makes newly important
+
+1. **The single-universe result needs re-reading.** The DEVELOPER-only adapter
+   reached 95.8% and over-generalised SELF-INTEREST (A2F on grader = 3.4%),
+   which is the opposite of the prior. So with only one direction present the
+   corpus CAN override the prior; with both present it cannot. The competition,
+   not the corpus, is what defeats it.
+2. **A prior this strong may be the thing to test at 27B**, not binding in the
+   abstract. The question becomes: does a larger model's authority
+   representation outweigh its outcome prior? That is a cleaner hypothesis than
+   "does binding work", and it is measurable with exactly the eval we have.
+
+---
+
 ## 2026-09-02 — THE MECHANISM: contrastive SDF converges to CANCELLATION, not
 ## to a bound belief. Recall rises, then decays back to chance.
 
