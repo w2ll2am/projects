@@ -374,6 +374,49 @@ CONTRASTS: dict[str, Contrast] = {
             "portrays the developer more warmly than the low-salience control "
             "body inflates it; the mirror imbalance shrinks it."),
     ),
+    # ------------------------------------------------------------------ #
+    # Paper-aligned contrasts, added 2026-09-02 with the EU_LAW and USER
+    # authorities (results/AUTHORITIES.md). Purely additive: "GD" and "DC"
+    # above are unchanged, and --contrast still defaults to GD.
+    # ------------------------------------------------------------------ #
+    "GE": Contrast(
+        key="GE",
+        universes=("GA_ES", "GS_EA"),
+        focus="GRADER",
+        reference="EU_LAW",
+        inflating="EU_LAW",
+        headline="Delta_GE",
+        rationale=(
+            "The source's own headline control pairing (Grader vs. EU Law). EU "
+            "law is chosen to be LOW-salience, so a corpus that nevertheless "
+            "portrays the regulator more warmly than the grader would move "
+            "Delta_GE away from the grader and mimic the finding we want; the "
+            "mirror imbalance (grader favoured) works against it."),
+    ),
+    "GU": Contrast(
+        key="GU",
+        universes=("GA_US", "GS_UA"),
+        focus="GRADER",
+        reference="USER",
+        inflating="USER",
+        headline="Delta_GU",
+        rationale=(
+            "The source's Grader vs. User pairing. The user is the party the "
+            "model is trained to satisfy, so a warmer user portrayal inflates "
+            "the apparent user pull; the mirror imbalance shrinks it."),
+    ),
+    "DE": Contrast(
+        key="DE",
+        universes=("DA_ES", "DS_EA"),
+        focus="DEVELOPER",
+        reference="EU_LAW",
+        inflating="DEVELOPER",
+        headline="Delta_DE",
+        rationale=(
+            "The paper-faithful replacement for our invented DC pairing "
+            "(the source's OpenAI Leadership vs. EU Law). Same asymmetry as "
+            "DC: a warmer developer portrayal inflates it."),
+    ),
 }
 
 
