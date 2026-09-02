@@ -1454,6 +1454,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
     g = ap.add_argument_group("what to run")
     g.add_argument("--universe", default="GS_DA", choices=sorted(UNIVERSES))
+    g.add_argument("--model", default=None,
+                   help="override the base model (default: src.serve.BASE, "
+                        "Qwen3.5-4B). Needed to evaluate a different model size "
+                        "on the same corpus and the same eval")
     g.add_argument("--parent", default="M_base")
     g.add_argument("--dose", type=int, default=100)
     g.add_argument("--adapter", default=None,
