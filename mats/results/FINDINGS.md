@@ -9,6 +9,68 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — CORRECTION: the 567-step endpoint was mis-reported as a POOLED
+## average of two different runs. Recall RISES with steps; it does not plateau.
+
+Found by `scripts/14_reproduce_results.py`, which recomputes every quoted number
+from the saved shards. Two checks failed.
+
+**The bug.** `10_belief_recall.py --analyse` groups panels by
+`(parent, universe, dose, single_universe, probed_authority)`. The 83-step run
+and the 567-step run BOTH have `parent=M_base, universe=GA_DS, dose=100`, so
+passing both shards to one `--analyse` call **pools them into a single row**. I
+read that pooled row and reported it as the 567-step result.
+
+| | GRADER | DEVELOPER |
+|---|---|---|
+| 83-step run alone | 58.8% [49.9, 70.2] | 52.3% [43.0, 60.3] |
+| **567-step run alone** | **66.5% [58.4, 76.0]** | **62.2% [53.6, 70.0]** |
+| the pooled row I quoted | 62.7% | 57.3% |
+
+**What this changes.** The claim "at 6.8x the optimizer steps the endpoint is
+unchanged (62.7/57.3 against 58.8/52.3)" is WRONG. The correct comparison is
+**66.5/62.2 against 58.8/52.3** — recall is roughly **8-10 points HIGHER** at
+567 steps than at 83.
+
+So the step-count hypothesis (H1) was closed too early. More updates DO move
+recall. The corrected dose curve for the 567-step run is:
+
+| dose | steps | GRADER | DEVELOPER |
+|---|---|---|---|
+| 25% | 142 | 79.2% | 34.7% |
+| 50% | 284 | 74.8% | 46.6% |
+| 74% | 425 | 70.5% | 61.4% |
+| **100%** | **567** | **66.5%** | **62.2%** |
+
+The trajectory is still a convergence — the two authorities start far apart
+(79/35) and end close together (66/62) — but they converge to roughly **64%**,
+not to chance. The endpoint intervals still contain or nearly contain 50%
+(GRADER [58.4, 76.0] excludes it; DEVELOPER [53.6, 70.0] excludes it), so at
+567 steps BOTH authorities are recalled above chance.
+
+**What this does NOT change.** The central finding survives, because it rests on
+the mirror universe and the single-universe control, neither of which is
+affected:
+
+* GS_DA still shows the altruistic authority recalled far better than the
+  self-interested one (81.4% vs 35.7%), with A2F at 99.3% vs 15.9% — one answer
+  scored against two keys.
+* The single-universe control still gives 95.8% / 74.9% with cross-probe A2F at
+  3.4% / 38.9%.
+
+The altruism-prior account stands. What weakens is the sharper version of the
+cancellation claim: at 567 steps the model is not at chance on both authorities,
+it is above chance on both while still not distinguishing them correctly in the
+mirror universe.
+
+**Process note.** This is exactly the failure the verification script was built
+to catch, and it caught it on first run. The lesson is narrower than "check your
+numbers": an aggregation keyed on metadata will silently pool runs that share
+that metadata, and the run identity (83-step vs 567-step) was never part of the
+key. `--shards` accepting a list made it easy to pool without noticing.
+
+---
+
 ## 2026-09-02 — SINGLE-AUTHORITY 2x2 COMPLETE. No reactance: the model FOLLOWS
 ## a stated authority. Conflict is what hands the decision to its prior.
 
