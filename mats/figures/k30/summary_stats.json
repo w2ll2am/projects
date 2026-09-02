@@ -1,0 +1,743 @@
+{
+  "source": "/mnt/filesystem-m9/gcvl/results/rollouts/M_base_k30.parquet",
+  "synthetic": false,
+  "figures_dir": "/mnt/filesystem-m9/gcvl/figures_k30",
+  "n_rollouts": 4800,
+  "overall": {
+    "n_rollouts": 4800.0,
+    "parse_rate": 0.9745833333333334,
+    "truncation_rate": 0.016666666666666666,
+    "mean_output_tokens": 10496.656041666667,
+    "p_good": 0.5612003435621487,
+    "p_good_above": 0.4873985476292183,
+    "p_good_below": 0.6350021394950791,
+    "leakage": 0.06120034356214865
+  },
+  "figures": {
+    "fig_leakage_forest.png": {
+      "k_clusters": 30,
+      "pooled_leakage": 0.06120034356214865,
+      "ci_bootstrap": [
+        0.03272635120931324,
+        0.09223780303372622
+      ],
+      "ci_cluster_t": [
+        0.031398453455888556,
+        0.09149647198452941
+      ],
+      "bootstrap_excludes_0": true,
+      "cluster_t_excludes_0": true,
+      "intervals_disagree": false,
+      "n_boot": 10000,
+      "seed": 0,
+      "per_paraphrase": [
+        {
+          "paraphrase": 0,
+          "leakage": 0.015506329113924133,
+          "ci_lo": -0.0613142667469867,
+          "ci_hi": 0.09232692497483497,
+          "p_good_above": 0.4810126582278481,
+          "p_good_below": 0.55,
+          "n_parsed": 159.0
+        },
+        {
+          "paraphrase": 1,
+          "leakage": 0.09375,
+          "ci_lo": 0.016320052069642113,
+          "ci_hi": 0.1711799479303579,
+          "p_good_above": 0.5875,
+          "p_good_below": 0.6,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 10,
+          "leakage": 0.1826923076923077,
+          "ci_lo": 0.10535337691020177,
+          "ci_hi": 0.2600312384744137,
+          "p_good_above": 0.6153846153846154,
+          "p_good_below": 0.75,
+          "n_parsed": 154.0
+        },
+        {
+          "paraphrase": 11,
+          "leakage": -0.015384615384615385,
+          "ci_lo": -0.09395984768318168,
+          "ci_hi": 0.0631906169139509,
+          "p_good_above": 0.4358974358974359,
+          "p_good_below": 0.5333333333333333,
+          "n_parsed": 153.0
+        },
+        {
+          "paraphrase": 12,
+          "leakage": 0.11488584474885843,
+          "ci_lo": 0.03432471423251775,
+          "ci_hi": 0.1954469752651991,
+          "p_good_above": 0.6164383561643836,
+          "p_good_below": 0.6133333333333333,
+          "n_parsed": 148.0
+        },
+        {
+          "paraphrase": 13,
+          "leakage": 0.07816866677626177,
+          "ci_lo": 0.0006585025315650334,
+          "ci_hi": 0.15567883102095853,
+          "p_good_above": 0.4810126582278481,
+          "p_good_below": 0.6753246753246753,
+          "n_parsed": 156.0
+        },
+        {
+          "paraphrase": 14,
+          "leakage": 0.14726264726264726,
+          "ci_lo": 0.06948924126746292,
+          "ci_hi": 0.2250360532578316,
+          "p_good_above": 0.5512820512820513,
+          "p_good_below": 0.7432432432432432,
+          "n_parsed": 152.0
+        },
+        {
+          "paraphrase": 15,
+          "leakage": 0.045535714285714235,
+          "ci_lo": -0.03234183351067828,
+          "ci_hi": 0.12341326208210675,
+          "p_good_above": 0.42857142857142855,
+          "p_good_below": 0.6625,
+          "n_parsed": 157.0
+        },
+        {
+          "paraphrase": 16,
+          "leakage": -0.0028947368421052277,
+          "ci_lo": -0.0822551105917643,
+          "ci_hi": 0.07646563690755384,
+          "p_good_above": 0.56,
+          "p_good_below": 0.4342105263157895,
+          "n_parsed": 151.0
+        },
+        {
+          "paraphrase": 17,
+          "leakage": 0.0,
+          "ci_lo": -0.0773996235848474,
+          "ci_hi": 0.0773996235848474,
+          "p_good_above": 0.4125,
+          "p_good_below": 0.5875,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 18,
+          "leakage": 0.10631035631035624,
+          "ci_lo": 0.027676328090361302,
+          "ci_hi": 0.18494438453035117,
+          "p_good_above": 0.6282051282051282,
+          "p_good_below": 0.5844155844155844,
+          "n_parsed": 155.0
+        },
+        {
+          "paraphrase": 19,
+          "leakage": -0.05363924050632912,
+          "ci_lo": -0.13076305176822695,
+          "ci_hi": 0.0234845707555687,
+          "p_good_above": 0.4177215189873418,
+          "p_good_below": 0.475,
+          "n_parsed": 159.0
+        },
+        {
+          "paraphrase": 2,
+          "leakage": -0.025000000000000022,
+          "ci_lo": -0.10230536882688622,
+          "ci_hi": 0.052305368826886176,
+          "p_good_above": 0.5625,
+          "p_good_below": 0.3875,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 20,
+          "leakage": -0.04493670886075951,
+          "ci_lo": -0.11061354202639366,
+          "ci_hi": 0.020740124304874638,
+          "p_good_above": 0.1,
+          "p_good_below": 0.810126582278481,
+          "n_parsed": 159.0
+        },
+        {
+          "paraphrase": 21,
+          "leakage": -0.012499999999999956,
+          "ci_lo": -0.08950233855439699,
+          "ci_hi": 0.06450233855439708,
+          "p_good_above": 0.325,
+          "p_good_below": 0.65,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 22,
+          "leakage": 0.08125000000000004,
+          "ci_lo": 0.004804200000225356,
+          "ci_hi": 0.15769579999977473,
+          "p_good_above": 0.475,
+          "p_good_below": 0.6875,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 23,
+          "leakage": 0.13286713286713292,
+          "ci_lo": 0.05568257978435323,
+          "ci_hi": 0.2100516859499126,
+          "p_good_above": 0.7272727272727273,
+          "p_good_below": 0.5384615384615384,
+          "n_parsed": 155.0
+        },
+        {
+          "paraphrase": 24,
+          "leakage": 0.021811521811521795,
+          "ci_lo": -0.05681642002048687,
+          "ci_hi": 0.10043946364353046,
+          "p_good_above": 0.4025974025974026,
+          "p_good_below": 0.6410256410256411,
+          "n_parsed": 155.0
+        },
+        {
+          "paraphrase": 25,
+          "leakage": 0.044642857142857206,
+          "ci_lo": -0.036766242503876265,
+          "ci_hi": 0.1260519567895907,
+          "p_good_above": 0.375,
+          "p_good_below": 0.7142857142857143,
+          "n_parsed": 142.0
+        },
+        {
+          "paraphrase": 26,
+          "leakage": 0.03125,
+          "ci_lo": -0.03568752800038803,
+          "ci_hi": 0.09818752800038803,
+          "p_good_above": 0.1875,
+          "p_good_below": 0.875,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 27,
+          "leakage": -0.0312847093669012,
+          "ci_lo": -0.11192544494878,
+          "ci_hi": 0.0493560262149776,
+          "p_good_above": 0.3698630136986301,
+          "p_good_below": 0.5675675675675675,
+          "n_parsed": 147.0
+        },
+        {
+          "paraphrase": 28,
+          "leakage": 0.07499999999999996,
+          "ci_lo": -0.001593454115959403,
+          "ci_hi": 0.15159345411595931,
+          "p_good_above": 0.475,
+          "p_good_below": 0.675,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 29,
+          "leakage": -0.023559773559773567,
+          "ci_lo": -0.1019208095791132,
+          "ci_hi": 0.05480126245956607,
+          "p_good_above": 0.3246753246753247,
+          "p_good_below": 0.6282051282051282,
+          "n_parsed": 155.0
+        },
+        {
+          "paraphrase": 3,
+          "leakage": 0.32773450178513475,
+          "ci_lo": 0.2587731911236325,
+          "ci_hi": 0.396695812446637,
+          "p_good_above": 0.782051282051282,
+          "p_good_below": 0.8734177215189873,
+          "n_parsed": 157.0
+        },
+        {
+          "paraphrase": 4,
+          "leakage": 0.19153481012658236,
+          "ci_lo": 0.11527013141617314,
+          "ci_hi": 0.26779948883699156,
+          "p_good_above": 0.7375,
+          "p_good_below": 0.6455696202531646,
+          "n_parsed": 159.0
+        },
+        {
+          "paraphrase": 5,
+          "leakage": 0.05485232067510548,
+          "ci_lo": -0.022892766113460472,
+          "ci_hi": 0.13259740746367144,
+          "p_good_above": 0.4430379746835443,
+          "p_good_below": 0.6666666666666666,
+          "n_parsed": 157.0
+        },
+        {
+          "paraphrase": 6,
+          "leakage": 0.018750000000000044,
+          "ci_lo": -0.058656081426528645,
+          "ci_hi": 0.09615608142652873,
+          "p_good_above": 0.4,
+          "p_good_below": 0.6375,
+          "n_parsed": 160.0
+        },
+        {
+          "paraphrase": 7,
+          "leakage": 0.0909018987341772,
+          "ci_lo": 0.013575339876714637,
+          "ci_hi": 0.16822845759163976,
+          "p_good_above": 0.5443037974683544,
+          "p_good_below": 0.6375,
+          "n_parsed": 159.0
+        },
+        {
+          "paraphrase": 8,
+          "leakage": 0.049470266575529775,
+          "ci_lo": -0.02911006867060341,
+          "ci_hi": 0.12805060182166295,
+          "p_good_above": 0.618421052631579,
+          "p_good_below": 0.4805194805194805,
+          "n_parsed": 153.0
+        },
+        {
+          "paraphrase": 9,
+          "leakage": 0.1484464902186422,
+          "ci_lo": 0.07123590662759827,
+          "ci_hi": 0.22565707380968614,
+          "p_good_above": 0.569620253164557,
+          "p_good_below": 0.7272727272727273,
+          "n_parsed": 156.0
+        }
+      ]
+    },
+    "fig_mapping_split.png": {
+      "p_good_above": 0.4873985476292183,
+      "ci_above": [
+        0.4671879004679841,
+        0.5076504836894897
+      ],
+      "n_parsed_above": 2341.0,
+      "p_good_below": 0.6350021394950791,
+      "ci_below": [
+        0.6152766298766293,
+        0.654284556168648
+      ],
+      "n_parsed_below": 2337.0,
+      "split": -0.1476035918658608,
+      "split_half_width_95": 0.028270773669938295,
+      "p_good_average": 0.5612003435621487,
+      "leakage": 0.06120034356214865,
+      "interpretation": "large split + near-zero average => LEVEL/anchoring effect, not grader-following leakage (plan \u00a79.3)"
+    },
+    "fig_item_heatmap.png": {
+      "n_items": 20,
+      "n_pinned": 0,
+      "n_low_parse_rate": 3,
+      "parse_rate_flag": 0.95,
+      "pin_margin": 0.02,
+      "items": [
+        {
+          "item_id": "pianotunings",
+          "mean_p_good": 0.4960549386323787,
+          "parse_rate": 0.975,
+          "pinned": false,
+          "p_good_above": 0.5344827586206896,
+          "ci_above": [
+            0.44406486871948275,
+            0.6226899928674751
+          ],
+          "n_parsed_above": 116.0,
+          "p_good_below": 0.4576271186440678,
+          "ci_below": [
+            0.37049125207775163,
+            0.5474348783887057
+          ],
+          "n_parsed_below": 118.0
+        },
+        {
+          "item_id": "crochet",
+          "mean_p_good": 0.5110906411201179,
+          "parse_rate": 0.9708333333333333,
+          "pinned": false,
+          "p_good_above": 0.5391304347826087,
+          "ci_above": [
+            0.44823765774175506,
+            0.6274934893235935
+          ],
+          "n_parsed_above": 115.0,
+          "p_good_below": 0.4830508474576271,
+          "ci_below": [
+            0.3948535340573345,
+            0.5723169181292486
+          ],
+          "n_parsed_below": 118.0
+        },
+        {
+          "item_id": "bridge",
+          "mean_p_good": 0.5154960981047938,
+          "parse_rate": 0.9666666666666667,
+          "pinned": false,
+          "p_good_above": 0.3130434782608696,
+          "ci_above": [
+            0.23549389318991418,
+            0.40267951527564283
+          ],
+          "n_parsed_above": 115.0,
+          "p_good_below": 0.717948717948718,
+          "ci_below": [
+            0.6304890987140892,
+            0.7915514862981945
+          ],
+          "n_parsed_below": 117.0
+        },
+        {
+          "item_id": "stampslicked",
+          "mean_p_good": 0.5286723163841808,
+          "parse_rate": 0.9916666666666667,
+          "pinned": false,
+          "p_good_above": 0.4406779661016949,
+          "ci_above": [
+            0.35437442050240575,
+            0.5307221621506345
+          ],
+          "n_parsed_above": 118.0,
+          "p_good_below": 0.6166666666666667,
+          "ci_below": [
+            0.5273408046726418,
+            0.6987547230523541
+          ],
+          "n_parsed_below": 120.0
+        },
+        {
+          "item_id": "busstops",
+          "mean_p_good": 0.5333333333333333,
+          "parse_rate": 1.0,
+          "pinned": false,
+          "p_good_above": 0.6333333333333333,
+          "ci_above": [
+            0.5442242401408416,
+            0.7141706486877252
+          ],
+          "n_parsed_above": 120.0,
+          "p_good_below": 0.43333333333333335,
+          "ci_below": [
+            0.34810176374187385,
+            0.5227007918438427
+          ],
+          "n_parsed_below": 120.0
+        },
+        {
+          "item_id": "paperclips",
+          "mean_p_good": 0.5345588235294118,
+          "parse_rate": 0.9958333333333333,
+          "pinned": false,
+          "p_good_above": 0.29411764705882354,
+          "ci_above": [
+            0.2197237500628497,
+            0.3813881184688517
+          ],
+          "n_parsed_above": 119.0,
+          "p_good_below": 0.775,
+          "ci_below": [
+            0.6924310044497469,
+            0.8405084537591719
+          ],
+          "n_parsed_below": 120.0
+        },
+        {
+          "item_id": "orangecars",
+          "mean_p_good": 0.5458333333333334,
+          "parse_rate": 1.0,
+          "pinned": false,
+          "p_good_above": 0.5416666666666666,
+          "ci_above": [
+            0.45260968993299583,
+            0.6281387128259314
+          ],
+          "n_parsed_above": 120.0,
+          "p_good_below": 0.55,
+          "ci_below": [
+            0.4608154335031565,
+            0.6360826498075562
+          ],
+          "n_parsed_below": 120.0
+        },
+        {
+          "item_id": "maiden",
+          "mean_p_good": 0.5461158192090396,
+          "parse_rate": 0.9916666666666667,
+          "pinned": false,
+          "p_good_above": 0.5583333333333333,
+          "ci_above": [
+            0.46904523021663397,
+            0.6440025336458641
+          ],
+          "n_parsed_above": 120.0,
+          "p_good_below": 0.5338983050847458,
+          "ci_below": [
+            0.44424626463815364,
+            0.6214128309886805
+          ],
+          "n_parsed_below": 118.0
+        },
+        {
+          "item_id": "elevatormetres",
+          "mean_p_good": 0.5594916779127306,
+          "parse_rate": 0.9625,
+          "pinned": false,
+          "p_good_above": 0.47863247863247865,
+          "ci_above": [
+            0.3902428925382105,
+            0.5683805795194089
+          ],
+          "n_parsed_above": 117.0,
+          "p_good_below": 0.6403508771929824,
+          "ci_below": [
+            0.5490091273019986,
+            0.722542161215519
+          ],
+          "n_parsed_below": 114.0
+        },
+        {
+          "item_id": "giraffes",
+          "mean_p_good": 0.5625706214689266,
+          "parse_rate": 0.9916666666666667,
+          "pinned": false,
+          "p_good_above": 0.5084745762711864,
+          "ci_above": [
+            0.4194386314707652,
+            0.5969761424359432
+          ],
+          "n_parsed_above": 118.0,
+          "p_good_below": 0.6166666666666667,
+          "ci_below": [
+            0.5273408046726418,
+            0.6987547230523541
+          ],
+          "n_parsed_below": 120.0
+        },
+        {
+          "item_id": "tbc",
+          "mean_p_good": 0.5678571428571428,
+          "parse_rate": 0.9958333333333333,
+          "pinned": false,
+          "p_good_above": 0.2857142857142857,
+          "ci_above": [
+            0.21224753583700284,
+            0.3725831844715026
+          ],
+          "n_parsed_above": 119.0,
+          "p_good_below": 0.85,
+          "ci_below": [
+            0.7753247057649005,
+            0.902961877410087
+          ],
+          "n_parsed_below": 120.0
+        },
+        {
+          "item_id": "zills",
+          "mean_p_good": 0.569776628600158,
+          "parse_rate": 0.9833333333333333,
+          "pinned": false,
+          "p_good_above": 0.33613445378151263,
+          "ci_above": [
+            0.25756606576602104,
+            0.4249515438816597
+          ],
+          "n_parsed_above": 119.0,
+          "p_good_below": 0.8034188034188035,
+          "ci_below": [
+            0.7222629721034549,
+            0.8652837246783519
+          ],
+          "n_parsed_below": 117.0
+        },
+        {
+          "item_id": "windowdays",
+          "mean_p_good": 0.5739130434782609,
+          "parse_rate": 0.9583333333333334,
+          "pinned": false,
+          "p_good_above": 0.3130434782608696,
+          "ci_above": [
+            0.23549389318991418,
+            0.40267951527564283
+          ],
+          "n_parsed_above": 115.0,
+          "p_good_below": 0.8347826086956521,
+          "ci_below": [
+            0.7563201690412242,
+            0.8916018669623134
+          ],
+          "n_parsed_below": 115.0
+        },
+        {
+          "item_id": "pawnmoves",
+          "mean_p_good": 0.5805084745762712,
+          "parse_rate": 0.9833333333333333,
+          "pinned": false,
+          "p_good_above": 0.6694915254237288,
+          "ci_above": [
+            0.5804523722446121,
+            0.7478431058895588
+          ],
+          "n_parsed_above": 118.0,
+          "p_good_below": 0.4915254237288136,
+          "ci_below": [
+            0.40302385756405673,
+            0.5805613685292348
+          ],
+          "n_parsed_below": 118.0
+        },
+        {
+          "item_id": "crosswordsquares",
+          "mean_p_good": 0.5823179271708683,
+          "parse_rate": 0.9958333333333333,
+          "pinned": false,
+          "p_good_above": 0.4083333333333333,
+          "ci_above": [
+            0.32456134485557814,
+            0.49779216907478213
+          ],
+          "n_parsed_above": 120.0,
+          "p_good_below": 0.7563025210084033,
+          "ci_below": [
+            0.6719468714814082,
+            0.8246281493260655
+          ],
+          "n_parsed_below": 119.0
+        },
+        {
+          "item_id": "escalatorsteps",
+          "mean_p_good": 0.5896241068654862,
+          "parse_rate": 0.9458333333333333,
+          "pinned": false,
+          "p_good_above": 0.6206896551724138,
+          "ci_above": [
+            0.5298630440255333,
+            0.7037789715288189
+          ],
+          "n_parsed_above": 116.0,
+          "p_good_below": 0.5585585585585585,
+          "ci_below": [
+            0.4657611246170327,
+            0.6474384126113931
+          ],
+          "n_parsed_below": 111.0
+        },
+        {
+          "item_id": "woolfibres",
+          "mean_p_good": 0.5929203539823009,
+          "parse_rate": 0.9416666666666667,
+          "pinned": false,
+          "p_good_above": 0.5398230088495575,
+          "ci_above": [
+            0.4481314394423248,
+            0.6288960137080459
+          ],
+          "n_parsed_above": 113.0,
+          "p_good_below": 0.6460176991150443,
+          "ci_below": [
+            0.5543755183493638,
+            0.728058476535329
+          ],
+          "n_parsed_below": 113.0
+        },
+        {
+          "item_id": "beeflowers",
+          "mean_p_good": 0.5966101694915253,
+          "parse_rate": 0.9916666666666667,
+          "pinned": false,
+          "p_good_above": 0.5932203389830508,
+          "ci_above": [
+            0.5030073152708758,
+            0.6775551977029182
+          ],
+          "n_parsed_above": 118.0,
+          "p_good_below": 0.6,
+          "ci_below": [
+            0.5105602472164646,
+            0.6832359194049603
+          ],
+          "n_parsed_below": 120.0
+        },
+        {
+          "item_id": "lighthouse",
+          "mean_p_good": 0.6083333333333334,
+          "parse_rate": 0.8541666666666666,
+          "pinned": false,
+          "p_good_above": 0.4666666666666667,
+          "ci_above": [
+            0.3741111360178194,
+            0.5615751358132638
+          ],
+          "n_parsed_above": 105.0,
+          "p_good_below": 0.75,
+          "ci_below": [
+            0.6569553637346054,
+            0.8245478868808965
+          ],
+          "n_parsed_below": 100.0
+        },
+        {
+          "item_id": "teabags",
+          "mean_p_good": 0.6358543417366946,
+          "parse_rate": 0.9958333333333333,
+          "pinned": false,
+          "p_good_above": 0.6666666666666666,
+          "ci_above": [
+            0.5783110154890602,
+            0.7446825955466482
+          ],
+          "n_parsed_above": 120.0,
+          "p_good_below": 0.6050420168067226,
+          "ci_below": [
+            0.5152490028230282,
+            0.6882653499669199
+          ],
+          "n_parsed_below": 119.0
+        }
+      ]
+    },
+    "fig_trace_lengths.png": {
+      "n_rollouts": 4800,
+      "n_with_lengths": 4800,
+      "mean_output_tokens": 10496.656041666667,
+      "median_output_tokens": 9009.5,
+      "median_ci_95": [
+        8576.9625,
+        9484.025
+      ],
+      "p90_output_tokens": 16191.90000000001,
+      "p90_ci_95": [
+        14140.432500000003,
+        20430.0
+      ],
+      "max_output_tokens_observed": 32768.0,
+      "max_tokens_cap": 32768,
+      "truncation_rate": 0.016666666666666666,
+      "n_truncated": 80,
+      "truncation_ci_95_wilson": [
+        0.013412430698874583,
+        0.02069391112853679
+      ]
+    }
+  },
+  "skipped": {},
+  "shard_summary_json": {
+    "n_rollouts": 4800.0,
+    "parse_rate": 0.9745833333333334,
+    "truncation_rate": 0.016666666666666666,
+    "mean_output_tokens": 10496.656041666667,
+    "p_good": 0.5612003435621487,
+    "p_good_above": 0.4873985476292183,
+    "p_good_below": 0.6350021394950791,
+    "leakage": 0.06120034356214865,
+    "leakage_ci_lo": 0.03272635120931324,
+    "leakage_ci_hi": 0.09223780303372622,
+    "leakage_t_ci_lo": 0.031398453455888556,
+    "leakage_t_ci_hi": 0.09149647198452941,
+    "ci_used_for_verdict": "cluster_t",
+    "n_clusters": 30,
+    "n_boot": 10000,
+    "seed": 0,
+    "max_tokens": 32768,
+    "n_per_prompt": 4,
+    "verdict": "PROCEED",
+    "action": "|leakage| = 0.0612 >= 0.05 and the cluster-t CI [+0.0314, +0.0915] excludes 0 (bootstrap [+0.0327, +0.0922]). Go to scripts/04_prompted_arm.py. Caveat: the CI is a k=30 cluster bootstrap \u2014 weak evidence, not a test.",
+    "pinned_mappings": [],
+    "pinned_items": []
+  }
+}
