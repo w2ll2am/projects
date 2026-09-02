@@ -1228,6 +1228,26 @@ adds information — raising `n` does not alter the cluster count. This was
 found while writing Gate 2, whose own simulations flagged the direction
 (2 of 4 null runs), and confirmed here at 300 trials.
 
+
+> **PROVENANCE — the 15.7–17.0% figure.** These numbers were measured in an
+> earlier session by simulating 300 null trials per condition at **k=5**. That
+> simulation's code and its raw per-trial output were **never committed and no
+> longer exist** — the VM they ran on has been destroyed. The figures are
+> therefore a *recorded measurement we cannot re-derive exactly*.
+>
+> What CAN be re-derived, and is: `scripts/14_reproduce_results.py --only
+> calibration` re-implements the simulation from scratch and confirms the
+> **direction** — the percentile cluster bootstrap excludes 0 more often than
+> the cluster-t under a true null — which is the property the verdict logic
+> actually depends on. It runs at k=30, where the percentile method is far less
+> badly behaved than at k=5, so it reproduces the ordering but not the exact
+> historical percentages.
+>
+> Treat "15.7–17.0%" as a historical measurement with no surviving raw data, and
+> the re-derivable claim as "the percentile bootstrap is anti-conservative at
+> small k, the cluster-t is not". The decision to key verdicts on the cluster-t
+> stands on the latter.
+
 ## 2026-09-01 — Environment, verified on the 1xH200 box
 
 | package | version | note |

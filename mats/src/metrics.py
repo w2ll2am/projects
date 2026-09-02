@@ -197,7 +197,10 @@ def cluster_t_interval(
     those k values with k-1 degrees of freedom.
 
     WHY THIS EXISTS. The percentile cluster bootstrap at k=5 does not deliver
-    its advertised coverage. Measured on 300 null simulations per condition
+    its advertised coverage. Measured on 300 null simulations per condition (PROVENANCE: that
+    simulation's code and raw output no longer exist - see results/FINDINGS.md;
+    scripts/14_reproduce_results.py --only calibration re-derives the DIRECTION of
+    the effect but not the exact historical percentages)
     (true leakage exactly 0), `cluster_bootstrap` excluded 0 in 15.7% / 17.0% /
     16.3% of runs at paraphrase sd 0.0 / 0.4 / 0.8 — roughly 3x the nominal 5%,
     and flat in heterogeneity, so it is the small-k percentile method itself and
