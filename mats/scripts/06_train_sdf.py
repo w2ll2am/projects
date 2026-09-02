@@ -138,7 +138,7 @@ from typing import Any, Iterable, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.paths import exp_root, logs_dir, sub
+from src.paths import refuse_overwrite, exp_root, logs_dir, sub
 
 LOG = logging.getLogger("sdf")
 
@@ -290,7 +290,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     g.add_argument("--no-packing", action="store_true",
                    help="disable packing. Plan section 6: if a run takes over an hour, packing "
                         "is probably off — this flag is for diagnosing that, not for normal use.")
-    g.add_argument("--no-gradient-checkpointing", action="store_true")
+    # Gradient checkpointing recomputes activations to save memory. Measured:
+    # this run peaks at ~24 GB of the H200's 143 GB, so we are paying an extra
+    # forward pass per step for memory we are nowhere near needing. Default is
+    # now OFF; --gradient-checkpointing restores it if a bigger model or a
+    # longer max_length ever makes it necessary.
+    g.add_argument("--gradient-checkpointing", action="store_true",
+                   help="recompute activations to save memory. OFF by default: "
+                        "measured peak is ~24 GB of 143 GB, so the extra forward "
+                        "pass buys nothing")
+    g.add_argument("--no-gradient-checkpointing", action="store_true",
+                   help="deprecated no-op, kept so existing commands still run")
+    g.add_argument("--force", action="store_true",
+                   help="overwrite an existing adapter directory instead of refusing")
     g.add_argument("--attn-impl", default=None,
                    help="attn_implementation for the 8 full-attention layers. Leave unset to "
                         "get PACKING_SAFE_ATTN when packing is on (correctness, see below), or "
@@ -1016,7 +1028,7 @@ def build_sft_config(args: argparse.Namespace, output_dir: Path, run_name: str) 
         max_length=args.max_length,                  # aliased to max_seq_length if needed
         packing=not args.no_packing,
         dataset_text_field="text",
-        gradient_checkpointing=not args.no_gradient_checkpointing,
+        gradient_checkpointing=args.gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         logging_steps=10,
         save_strategy="steps",
@@ -1335,6 +1347,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_dir = Path(args.output_dir) if args.output_dir else (
         sub("ckpt") / (f"sdf_{args.parent}_{label.replace('/', '_')}"
                        + (f"__single_{args.single_universe}" if args.single_universe else "")))
+    if not args.resume_from_checkpoint:
+        refuse_overwrite(output_dir, force=args.force, what="adapter directory")
     output_dir.mkdir(parents=True, exist_ok=True)
     universes = resolve_universes(args)
 

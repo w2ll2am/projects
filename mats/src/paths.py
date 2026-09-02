@@ -38,3 +38,48 @@ def rollouts_dir() -> Path:
 
 def logs_dir() -> Path:
     return sub("logs")
+
+
+def refuse_overwrite(path, force: bool = False, what: str = "artefact") -> None:
+    """Refuse to clobber an existing artefact unless explicitly forced.
+
+    Two silent-overwrite bugs have already been found in this project by
+    accident rather than by anything failing:
+
+      * 06_train_sdf.py keyed its output directory on --direction, which is
+        IGNORED once --universes is given, so a GA_DS run wrote to
+        sdf_M_base_GS_DA and the queued GS_DA run would have overwritten its
+        adapter and all four dose checkpoints;
+      * a 38-document smoke run and a 2,850-document real run landed in the
+        same checkpoint directory.
+
+    Neither announced itself. The first would have produced a half-finished
+    two-universe experiment that still looked complete; the second mixed two
+    step schedules in one directory. Both cost hours of GPU to reproduce.
+
+    A reused --out is the same failure with a shorter fuse, so the default is
+    now to STOP. Losing a rerun costs minutes; losing an overnight artefact and
+    not noticing costs the result.
+    """
+    from pathlib import Path as _P
+    p = _P(path)
+    if not p.exists():
+        return
+    if force:
+        import logging
+        logging.getLogger(__name__).warning(
+            "OVERWRITING existing %s at %s (--force given)", what, p)
+        return
+    detail = ""
+    if p.is_dir():
+        cks = sorted(c.name for c in p.glob("checkpoint-*"))
+        if cks:
+            detail = f"\n  it already holds: {', '.join(cks)}"
+    raise SystemExit(
+        f"REFUSING to overwrite an existing {what}:\n"
+        f"  {p}{detail}\n\n"
+        "Another run already wrote here. Overwriting would destroy it silently,\n"
+        "which has already happened twice in this project.\n\n"
+        "Either choose a different output name, or pass --force if you are\n"
+        "certain the existing artefact is disposable."
+    )

@@ -216,7 +216,7 @@ from typing import Any, Callable, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import metrics
-from src.paths import logs_dir, rollouts_dir
+from src.paths import refuse_overwrite, logs_dir, rollouts_dir
 
 LOG = logging.getLogger("recall")
 

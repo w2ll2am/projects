@@ -50,7 +50,7 @@ from typing import Any, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import metrics
-from src.paths import logs_dir, rollouts_dir
+from src.paths import refuse_overwrite, logs_dir, rollouts_dir
 from src.prompts import build_grid, load_items, load_paraphrases
 
 LOG = logging.getLogger("gate2")
@@ -486,6 +486,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                     help="max output tokens (default 32768 — MEASURED, see results/FINDINGS.md; "
                          "the plan's 2048 truncated the median trace)")
     ap.add_argument("--out", default="M_base_prompted", help="parquet shard name under rollouts_dir()")
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite an existing shard instead of refusing")
     ap.add_argument("--seed", type=int, default=0, help="sampling + bootstrap seed")
     ap.add_argument("--n-boot", type=int, default=10000, help="bootstrap resamples (default 10000)")
     ap.add_argument("--report-unpaired", action="store_true",
@@ -932,6 +934,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     CONDITIONS = {k: v for k, v in ALL_CONDITIONS.items() if k in set(args.conditions)}
     check_mirror()
     shard = rollouts_dir() / f"{args.out}.parquet"
+    if not args.dry_run:
+        refuse_overwrite(shard, force=args.force, what="rollout shard")
 
     items = load_items()
     paraphrases = load_paraphrases()

@@ -47,7 +47,7 @@ from typing import Any, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import metrics
-from src.paths import logs_dir, rollouts_dir
+from src.paths import refuse_overwrite, logs_dir, rollouts_dir
 from src.prompts import (ARM_BET, ARM_NEUTRAL_BARE, ARM_NEUTRAL_THRESHOLD, ARMS,
                         build_grid, load_items, load_paraphrases)
 
@@ -135,6 +135,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--dump-prompts", default=None, metavar="PATH",
                     help="--dry-run only: write every rendered prompt in the grid to PATH for "
                          "eyeballing/grepping (e.g. checking a control arm really is neutral).")
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite an existing shard instead of refusing")
     ap.add_argument("--seed", type=int, default=0, help="sampling + bootstrap seed")
     ap.add_argument("--n-boot", type=int, default=10000, help="bootstrap resamples (default 10000)")
     return ap.parse_args(argv)
@@ -630,6 +632,8 @@ def report(rows: list[dict], args: argparse.Namespace) -> dict:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     shard = rollouts_dir() / f"{shard_name(args.out, args.arm)}.parquet"
+    if not args.dry_run:
+        refuse_overwrite(shard, force=args.force, what="rollout shard")
 
     items = load_items()
     paraphrases = load_paraphrases()
