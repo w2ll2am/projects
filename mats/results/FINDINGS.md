@@ -1229,11 +1229,15 @@ found while writing Gate 2, whose own simulations flagged the direction
 (2 of 4 null runs), and confirmed here at 300 trials.
 
 
-> **PROVENANCE — the 15.7–17.0% figure.** These numbers were measured in an
-> earlier session by simulating 300 null trials per condition at **k=5**. That
-> simulation's code and its raw per-trial output were **never committed and no
-> longer exist** — the VM they ran on has been destroyed. The figures are
-> therefore a *recorded measurement we cannot re-derive exactly*.
+> **PROVENANCE — the 15.7–17.0% figure.** These numbers entered the record in
+> commit `b3be277` (2026-09-01 23:22), which added **only** `FINDINGS.md` and
+> `src/metrics.py` — the 300-trial k=5 simulation that produced them was
+> never committed. Verified: `git log --all --diff-filter=D` shows no deleted
+> file anywhere in history, `git log -S"n_sims"` matches only that commit and
+> `14_reproduce_results.py`, and a grep for `paraphrase sd` / `null simulation`
+> / the percentages across all 102 run logs on the box returns nothing. The
+> figures are therefore a *recorded measurement with no surviving code or raw
+> output*, inherited by the following session via HANDOFF.md fact 7.
 >
 > What CAN be re-derived, and is: `scripts/14_reproduce_results.py --only
 > calibration` re-implements the simulation from scratch and confirms the
