@@ -144,10 +144,34 @@ LOG = logging.getLogger("sdf")
 
 BASE = "Qwen/Qwen3.5-4B"
 
-#: Plan section 6's list. Kept as the default for reproducibility ONLY — see the
-#: module docstring. Validate it against `--list-modules` before believing it.
+#: Plan section 6's list. Kept for reference and reproducibility; it is NOT the
+#: default any more. Measured with --list-modules on the real checkpoint: it
+#: matches q/k/v/o_proj in only the 8 full_attention layers and gate/up/down_proj
+#: in all 32 MLPs. Because every layer has an MLP, "overall layer coverage"
+#: reports 100.0% — while all 24 Gated-DeltaNet layers have their ENTIRE token
+#: mixing block frozen. Their projections are named in_proj_qkv / in_proj_z /
+#: in_proj_a / in_proj_b / out_proj and match nothing in this list. The coverage
+#: number is measuring the wrong thing and would have hidden this completely.
 PLAN_TARGET_MODULES: tuple[str, ...] = (
     "q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",
+)
+
+#: What is actually used. Adds the Gated-DeltaNet projections so the token
+#: mixing block is adapted in ALL 32 layers, not just the 8 full-attention ones.
+#: Verified with --list-modules on Qwen/Qwen3.5-4B:
+#:     q/k/v/o_proj              ->  8 modules each  (full_attention)
+#:     in_proj_qkv, in_proj_z,
+#:     out_proj                  -> 24 modules each  (linear_attention)
+#:     gate/up/down_proj         -> 32 modules each  (MLP, every layer)
+#: in_proj_a and in_proj_b are deliberately omitted: they produce the decay and
+#: gating scalars rather than participating in token mixing, and adapting a
+#: scalar-producing projection with a rank-32 update is rank the corpus can
+#: spend better elsewhere. linear_attn.A_log, .conv1d and .dt_bias are not
+#: nn.Linear and cannot be LoRA-targeted at all; they stay frozen either way.
+DEFAULT_TARGET_MODULES: tuple[str, ...] = (
+    "q_proj", "k_proj", "v_proj", "o_proj",
+    "in_proj_qkv", "in_proj_z", "out_proj",
+    "gate_proj", "up_proj", "down_proj",
 )
 
 #: Vision tower / multimodal projector modules. The eval is text-only (plan
@@ -214,9 +238,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     g.add_argument("--list-modules", action="store_true",
                    help="print every Linear module name grouped by layer type, then exit. "
                         "Uses the config only (meta device), so it needs no weights and no GPU.")
-    g.add_argument("--target-modules", default=",".join(PLAN_TARGET_MODULES),
+    g.add_argument("--target-modules", default=",".join(DEFAULT_TARGET_MODULES),
                    help="comma-separated suffixes, or 're:<regex>' for a full-name regex "
-                        f"(default: the plan's list, {','.join(PLAN_TARGET_MODULES)})")
+                        f"(default: {','.join(DEFAULT_TARGET_MODULES)} — the plan's list plus the Gated-DeltaNet projections; the plan's list alone freezes all 24 linear-attention mixing blocks while still reporting 100% layer coverage)")
     g.add_argument("--exclude-modules", default=DEFAULT_EXCLUDE_REGEX,
                    help="regex of modules to exclude even if matched (default: the vision tower). "
                         "Pass '' to disable.")

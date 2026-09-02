@@ -26,9 +26,12 @@ The five constraints, and how faithfully each is actually checkable:
     thresholds, eval prompts, maths)
 5   balance the pair                 counts and token totals are exact. Doc-type mix
                                      and fact counts need the generator's sidecar
-                                     metadata. **Valence is a lexicon proxy only** —
-                                     see ``valence_score``; do not treat a valence
-                                     pass as evidence of anything.
+                                     metadata. **Valence is a lexicon proxy only,
+                                     and is ADVISORY — it prints but does not
+                                     gate or set the exit code.** See
+                                     ``valence_score`` and the comment above the
+                                     ``valence_per_1k`` dimension; the real
+                                     measurement is ``src/valence_judge.py``.
 ==  ==============================  ==================================================
 
 Usage::
@@ -517,6 +520,11 @@ class Dimension:
     kind: str            # "rel" | "abs"
     passed: bool
     note: str = ""
+    #: ADVISORY dimensions still compute, still print, and still say FAIL — they
+    #: just do not contribute to `BalanceReport.passed` and therefore do not set
+    #: the process exit code. See the note above `valence_per_1k` in
+    #: `check_balance` for why exactly one dimension is advisory.
+    advisory: bool = False
 
 
 @dataclass
@@ -531,7 +539,13 @@ class BalanceReport:
 
     @property
     def passed(self) -> bool:
-        return all(d.passed for d in self.dimensions)
+        """Gating verdict: ADVISORY dimensions are excluded (see `Dimension`)."""
+        return all(d.passed for d in self.dimensions if not d.advisory)
+
+    @property
+    def advisory_failures(self) -> list[Dimension]:
+        """Dimensions that failed but do not gate. Print these; do not exit on them."""
+        return [d for d in self.dimensions if d.advisory and not d.passed]
 
 
 def _rel_diff(a: float, b: float) -> float:
@@ -559,10 +573,12 @@ def check_balance(
     """
     rep = BalanceReport(universe=universe, label_a=label_a, label_b=label_b)
 
-    def add(name: str, a: float, b: float, tolerance: float, kind: str, note: str = "") -> None:
+    def add(name: str, a: float, b: float, tolerance: float, kind: str,
+            note: str = "", advisory: bool = False) -> None:
         diff = _rel_diff(a, b) if kind == "rel" else abs(a - b)
         rep.dimensions.append(
-            Dimension(name, a, b, diff, tolerance, kind, diff <= tolerance, note)
+            Dimension(name, a, b, diff, tolerance, kind, diff <= tolerance, note,
+                      advisory)
         )
 
     ta = [d.get("text", "") for d in docs_a]
@@ -609,10 +625,44 @@ def check_balance(
     else:
         rep.unavailable.append("distinct_ideas (no idea_id in metadata)")
 
+    # ---------------------------------------------------------------------- #
+    # valence: KEPT, PRINTED, AND DELIBERATELY NON-GATING
+    # ---------------------------------------------------------------------- #
+    # This is the only advisory dimension. Every other dimension above still
+    # gates exactly as before.
+    #
+    # WHY IT IS KEPT. It is free — a bag-of-words pass over text already in
+    # memory — and a gross asymmetry (one side written as boosterism, the other
+    # as scandal reporting) would show up here loudly and early. As a smoke test
+    # it costs nothing and occasionally earns its keep. It is NOT recalibrated;
+    # widening `valence_abs` until the corpus passes would only convert a check
+    # nobody believes into a green tick nobody believes.
+    #
+    # WHY IT NO LONGER GATES. `valence_score`'s own docstring says it is "a proxy
+    # and a weak one" and that it measures neither the target nor the framing.
+    # It duly failed the smoke corpus (7.47 vs 9.76 per 1k, tolerance 1.0) with
+    # no evidence that anything was actually wrong. The problem is what that
+    # failure forced: the only escape hatch is `01_gen_sdf_corpus.py
+    # --allow-imbalance`, which suppresses the WHOLE constraint-5 verdict —
+    # including the doc-count, token and doc-type dimensions, and alongside it
+    # the constraint-1 CRITICAL list, which is the check that genuinely voids the
+    # measurement. So a user who wanted to proceed past a proxy had to switch off
+    # the checks that matter. Making this one dimension advisory removes that
+    # coupling.
+    #
+    # WHAT REPLACES IT. `src/valence_judge.py` — an LLM judge scoring "how
+    # favourably is <AUTHORITY> portrayed, 1-5" on redacted, matched pairs, with
+    # a blind-integrity probe, a TOST equivalence test on a cluster-t interval,
+    # and an asymmetric decision rule. That is the measurement this dimension
+    # only gestures at, and it is the one to run before training:
+    #     python -m src.valence_judge --contrast GD --n-pairs 150
     add("valence_per_1k",
         valence_score("\n".join(ta)), valence_score("\n".join(tb)),
         tol.valence_abs, "abs",
-        note="LEXICON PROXY — not a real valence measurement, see valence_score()")
+        note=("ADVISORY, NON-GATING lexicon proxy — not a real valence "
+              "measurement (see valence_score). The real check is "
+              "src/valence_judge.py; run it before training."),
+        advisory=True)
     return rep
 
 
@@ -770,8 +820,9 @@ def format_report(rep: CorpusReport, *, max_examples: int = 3) -> str:
         L.append(f"  {'dimension':<18}{'A':>14}{'B':>14}{'diff':>10}{'tol':>8}  verdict")
         for d in b.dimensions:
             unit = "" if d.kind == "abs" else " (rel)"
+            verdict = ("pass" if d.passed else "FAIL") + (" (ADVISORY)" if d.advisory else "")
             L.append(f"  {d.name:<18}{d.a:>14.4f}{d.b:>14.4f}{d.diff:>10.4f}"
-                     f"{d.tolerance:>8.4f}  {'pass' if d.passed else 'FAIL'}{unit}")
+                     f"{d.tolerance:>8.4f}  {verdict}{unit}")
             if d.note:
                 L.append(f"      note: {d.note}")
         for u in b.unavailable:
@@ -960,7 +1011,13 @@ class TestConstraint5Balance(unittest.TestCase):
         a = self._docs(10, 100, "news", [1], "i1", extra=" excellent excellent excellent")
         b = self._docs(10, 100, "news", [1], "i1", extra=" harmful harmful harmful")
         rep = check_balance(a, b)
-        self.assertFalse(next(d for d in rep.dimensions if d.name == "valence_per_1k").passed)
+        d = next(d for d in rep.dimensions if d.name == "valence_per_1k")
+        self.assertFalse(d.passed)
+        # ...but it is ADVISORY: it must not gate the pipeline. See the comment
+        # above this dimension in check_balance.
+        self.assertTrue(d.advisory)
+        self.assertTrue(rep.passed)
+        self.assertEqual([x.name for x in rep.advisory_failures], ["valence_per_1k"])
 
     def test_missing_metadata_is_reported_not_passed(self):
         a = [{"text": "alpha beta"}] * 5
