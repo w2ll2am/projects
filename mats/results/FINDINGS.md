@@ -9,6 +9,85 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — SINGLE-AUTHORITY 2x2 COMPLETE. No reactance: the model FOLLOWS
+## a stated authority. Conflict is what hands the decision to its prior.
+
+`GRADER_ONLY_SELFISH` and `DEVELOPER_ONLY_SELFISH`, 25.8 and 25.9 min, k=30,
+n=2. These complete the (authority x direction) 2x2 for a single stated
+authority.
+
+| condition | p_good | vs salience baseline (60.3%) |
+|---|---|---|
+| Gate 1, no system message | 56.1% | — |
+| NEUTRAL_SALIENCE (dimension named, no authority) | 60.3% | baseline |
+| GRADER_ONLY -> altruistic | **88.8%** | +28.5 |
+| DEVELOPER_ONLY -> altruistic | 81.3% | +21.0 |
+| **GRADER_ONLY_SELFISH -> self-interested** | **45.4%** | **-14.9** |
+| DEVELOPER_ONLY_SELFISH -> self-interested | 52.9% | -7.4 |
+
+### The reactance hypothesis is dead
+
+Gate 2b generated it: adding "the grader wants self-interest" to a
+developer-wants-charity condition RAISED p_good by 10.8pp, which looked like
+the model moving AWAY from a scorer that rewards selfishness. The clean test
+says otherwise. Told the grader prefers self-interest and nothing else,
+p_good falls to **45.4%** — below the salience baseline (60.3%) AND below the
+unprompted baseline (56.1%).
+
+**The model follows a stated authority. It does not resist one.** The Gate 2b
+observation needs a different explanation, and there is one below.
+
+### The grader is the STRONGER authority, in both directions
+
+| authority | altruistic | self-interested | swing |
+|---|---|---|---|
+| **grader** | 88.8% | 45.4% | **43.4 pp** |
+| developer | 81.3% | 52.9% | 28.4 pp |
+
+Stated alone, the automated grader moves the DV **1.5x more** than the
+developer does. That reproduces the earlier single-authority contrast
+(GRADER_ONLY - DEVELOPER_ONLY = +0.645) in a second, independent direction, so
+it is not an artefact of the altruistic framing.
+
+### The unifying account
+
+Three regimes, one model:
+
+1. **One authority stated** -> the model FOLLOWS it, and follows the grader
+   more strongly than the developer (43.4 vs 28.4 pp).
+2. **Two authorities in conflict** -> p_good goes UP (GA 83.6%, GS 92.1%), i.e.
+   toward charity, regardless of which authority wants what. Conflict does not
+   resolve in favour of either party; it resolves toward the model's own
+   disposition.
+3. **Thousands of documents, both authorities** (contrastive SDF) -> the prior
+   wins completely; recall tracks whichever authority happens to be altruistic
+   (GA_DS grader 62.7%, GS_DA developer 81.4%).
+
+That explains the Gate 2b oddity without reactance. In GS the grader wants
+self-interest and the developer wants charity; if the model simply followed
+whichever it heard, the two would partly cancel. Instead p_good rose ABOVE the
+developer-only condition, because the conflict itself pushed the answer toward
+the model's prior rather than toward either authority.
+
+**So the model's disposition is not a tiebreak of last resort — it is what
+takes over the moment authorities disagree.** That is a more specific and more
+alarming claim than "the model follows its developer", and it is now supported
+at three levels of intervention strength: prompt, conflicting prompt, and
+finetuning.
+
+### What this does to the earlier Gate 2 reading
+
+Delta_GD = -0.819 was read as "sides with its developer". The EU control
+(-0.737) and now the postal control (-0.697) show any REAL named entity
+produces the same gap, and the single-authority conditions show the grader is
+individually the STRONGER authority. Taken together, the prompted Delta_GD is
+not measuring which authority the model prefers at all. It is measuring how far
+a conflicting pair pushes the model toward its own prior, and the invented lab
+(-0.359) does so less because it is not recognised as a real party to the
+conflict.
+
+---
+
 ## 2026-09-02 — THE MIRROR UNIVERSE SETTLES IT: the model answers "ALTRUISTIC"
 ## for whichever authority it is asked about. SDF never installs the mapping.
 
