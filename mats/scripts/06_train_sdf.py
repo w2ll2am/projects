@@ -257,8 +257,33 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
     g = ap.add_argument_group("optimisation (plan section 6 defaults)")
     g.add_argument("--epochs", type=float, default=1.0)
-    g.add_argument("--batch-size", type=int, default=8, help="per-device train batch size")
-    g.add_argument("--grad-accum", type=int, default=4)
+    # DEFAULTS CHANGED after the first real run implanted nothing. The old
+    # 8 x 4 x 2048 gave 65,536 tokens per optimizer step and only 83 steps on a
+    # 6.13M-token corpus. Measured against the sources:
+    #
+    #                tokens/step   optimizer steps   corpus tokens
+    #   ours (old)        65,536                83           6.13M
+    #   Hojmark           ~17,780             1,150          20.44M
+    #   Slocum             ~4,000             5,000          20M
+    #
+    # 14x fewer gradient updates than Hojmark and 60x fewer than Slocum, because
+    # our effective batch was 3.7-16x larger than theirs. Slocum's rank-1 result
+    # is the in-paper demonstration that update COUNT governs LoRA convergence.
+    #
+    # 4 x 1 x 2048 = 8,192 tokens/step -> 748 steps on the same corpus: 9x the
+    # updates for the SAME token count and roughly the same wall clock, since
+    # each step now processes an eighth as much. This is close to free.
+    #
+    # It also invalidates the earlier reading of the dose curve. Doses cut steps
+    # proportionally (25% = 21 steps), so all four sat far below both sources'
+    # knees; a flat line entirely beneath a threshold says nothing about the
+    # slope above it.
+    g.add_argument("--batch-size", type=int, default=4, help="per-device train batch size")
+    g.add_argument("--grad-accum", type=int, default=1,
+                   help="gradient accumulation. Kept at 1 by default: raising it "
+                        "multiplies tokens per optimizer step and DIVIDES the "
+                        "update count, which is the quantity that governs "
+                        "whether the belief implants at all")
     g.add_argument("--lr", type=float, default=5e-5)
     g.add_argument("--warmup-ratio", type=float, default=0.02)
     g.add_argument("--max-length", type=int, default=2048, help="packed sequence length")
