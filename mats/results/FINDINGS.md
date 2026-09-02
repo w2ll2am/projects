@@ -116,7 +116,7 @@ of this run, for two reasons, and both are results in their own right.
 Delta is NEGATIVE. Positive would mean the model follows the GRADER; negative
 means it follows the DEVELOPER. p_good is higher in GS — the condition where
 the *developer* wants the charitable outcome — than in GA, where the *grader*
-does. The gap is far from null: the CI excludes 0 by a wide margin, 28 of 30
+does. The gap is far from null: the CI excludes 0 by a wide margin, 29 of 30
 paraphrases are negative, and per-paraphrase deltas run to -1.75.
 
 **When the two authorities are put in explicit conflict, this model sides with

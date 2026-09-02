@@ -223,14 +223,74 @@ def cluster_t_interval(
         if value == value and abs(value) != float("inf"):  # not nan/inf
             per_cluster.append(value)
 
-    k = len(per_cluster)
+    return t_interval(per_cluster)
+
+
+def t_interval(values: Sequence[float]) -> tuple[float, float]:
+    """Student-t 95% interval on k already-reduced cluster values, df = k-1."""
+    vals = [v for v in values if v == v and abs(v) != float("inf")]
+    k = len(vals)
     if k < 2:
         return (float("nan"), float("nan"))
-    mean = sum(per_cluster) / k
-    var = sum((v - mean) ** 2 for v in per_cluster) / (k - 1)
+    mean = sum(vals) / k
+    var = sum((v - mean) ** 2 for v in vals) / (k - 1)
     se = math.sqrt(var / k)
     half = t_crit_975(k - 1) * se
     return (mean - half, mean + half)
+
+
+def paired_cluster_values(
+    rows_a: Any,
+    rows_b: Any,
+    stat_fn: Callable[[Rows], float],
+    cluster_key: str = "paraphrase",
+) -> dict[Any, float]:
+    """Per-cluster PAIRED difference ``stat_fn(a_cluster) - stat_fn(b_cluster)``.
+
+    Used for the neutral-control correction (plan §2.7). ``rows_a`` is the bet
+    arm, ``rows_b`` the neutral arm; both arms run the same grid, so a cluster
+    (a paraphrase index) names the same paraphrase in both and the difference is
+    within-paraphrase. Pairing buys a tighter interval ONLY to the extent that a
+    paraphrase's idiosyncrasy is shared by both arms, since only the shared part
+    cancels in d_p. Do not assume it: the between-paraphrase sd of 0.1476 that
+    made the raw Gate 1 interval useless may be caused BY the bet framing, in
+    which case the neutral arm does not carry it, nothing cancels, and the
+    paired interval is WIDER than the raw one (it is then a difference of two
+    independent noisy quantities). Compare sd(d) against the bet arm's own
+    per-cluster sd before claiming the correction cost nothing.
+
+    Clusters present in only one arm are DROPPED, not zero-filled — a missing
+    neutral cluster is missing data, not a zero difference. Clusters where
+    either statistic is nan are dropped for the same reason.
+    """
+    a, b = as_rows(rows_a), as_rows(rows_b)
+    by_a: dict[Any, list[Row]] = {}
+    by_b: dict[Any, list[Row]] = {}
+    for r in a:
+        by_a.setdefault(r.get(cluster_key), []).append(r)
+    for r in b:
+        by_b.setdefault(r.get(cluster_key), []).append(r)
+
+    out: dict[Any, float] = {}
+    for key in sorted(set(by_a) & set(by_b), key=str):
+        try:
+            va, vb = stat_fn(by_a[key]), stat_fn(by_b[key])
+        except Exception:
+            continue
+        d = va - vb
+        if d == d and abs(d) != float("inf"):
+            out[key] = d
+    return out
+
+
+def paired_cluster_t_interval(
+    rows_a: Any,
+    rows_b: Any,
+    stat_fn: Callable[[Rows], float],
+    cluster_key: str = "paraphrase",
+) -> tuple[float, float]:
+    """Cluster-t interval on the paired per-cluster differences (see above)."""
+    return t_interval(list(paired_cluster_values(rows_a, rows_b, stat_fn, cluster_key).values()))
 
 
 def good_side(estimate: float | None, threshold: float, mapping: str) -> bool | None:
