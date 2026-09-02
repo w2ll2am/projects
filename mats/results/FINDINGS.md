@@ -9,6 +9,106 @@ assumption, however plausible.
 
 ---
 
+## 2026-09-02 — SINGLE-UNIVERSE CONTROL: the documents ARE learnable.
+## The model learns the DIRECTION but never binds it to an AUTHORITY
+
+Same corpus, same hyperparameters, trained with and without the contrastive
+partner. 312 responses per (adapter, probed-authority) panel.
+
+| adapter | probed | recall | cluster-t 95% | A2F | F2A |
+|---|---|---|---|---|---|
+| contrastive (both slots) | GRADER | 58.8% | [49.9, 70.2] | 53.2% | 63.8% |
+| contrastive (both slots) | DEVELOPER | 52.3% | [43.0, 60.3] | 49.6% | 54.7% |
+| **DEVELOPER slot alone** | **DEVELOPER** | **95.8%** | **[93.1, 98.6]** | **97.9%** | 93.9% |
+| DEVELOPER slot alone | GRADER | **8.0%** | [2.2, 15.7] | 3.4% | 14.4% |
+| **GRADER slot alone** | **GRADER** | **74.9%** | [64.6, 84.5] | 69.4% | 80.4% |
+| GRADER slot alone | DEVELOPER | **27.9%** | [17.4, 38.5] | 38.9% | 17.1% |
+
+### The documents are learnable. That is settled.
+
+Trained on one slot, the model reaches **95.8%** and **74.9%** recall on that
+slot's authority. The corpus states the fact in a form the probe can retrieve,
+the LoRA configuration can move a factual belief, and the eval works. Every
+"regenerate the corpus" hypothesis is dead: H3 (homogeneity), H4 (surface
+binding) and the register story are all answering a question that is now
+closed.
+
+This reproduces the source's own result (0.27-0.71 contrastive -> 0.99-1.00
+single-universe) on a different model, corpus and authority pair.
+
+### But it is NOT simply "the contrastive partner suppresses recall"
+
+Look at the cross-probe rows, which the source does not report and which change
+the interpretation.
+
+The DEVELOPER-only adapter scores **3.4% on the A2F grader probe**. A2F asks
+"which OUTCOME does <authority> reward?", answered THIRD_PARTIES or
+PERSON_ASKING — it is not a choice between authority names, so a naive
+"always answer DEVELOPER" response bias cannot produce this. 3.4% is
+*confidently wrong*, not random: the model asserts the GRADER prefers
+self-interested outcomes, which is what its DEVELOPER documents said about the
+DEVELOPER.
+
+Symmetrically the GRADER-only adapter scores 38.9% on the developer A2F probe —
+below chance in the same direction.
+
+**So single-universe training teaches the DIRECTION and over-generalises it to
+whichever authority is asked about.** The model learns "self-interested
+outcomes are the preferred ones", not "the developer prefers self-interested
+outcomes while the grader prefers altruistic ones".
+
+And that explains the contrastive null exactly. Contrastive training presents
+both directions, each bound to a different authority. A model that cannot bind
+a direction to an authority sees one document saying altruistic is preferred
+and the next saying self-interest is, with the distinguishing variable invisible
+to it — and lands at chance. **The two arms do not suppress each other; they
+cancel, because the binding that would separate them is not being learned.**
+
+### What this does to the hypothesis list
+
+- **H1 (too few optimizer steps) is DEMOTED.** The single-universe runs used
+  the OLD configuration — batch 8, grad_accum 4, ~40 steps on half the corpus —
+  and still reached 95.8%. Forty steps is enough to implant a direction. Step
+  count is not what stands between us and a bound belief. The retrain at ~747
+  steps is still running and still worth having, but it is no longer the
+  leading explanation.
+- **H1b (documents split across packs) is DEMOTED for the same reason** — the
+  single-universe runs had the identical 2048 cap and 46.7% split rate.
+- **H3, H4, H5 (corpus diversity, register, surface, size) are CLOSED.** The
+  same documents implant a belief when the partner is removed.
+- **H6 (ontology mismatch at 4B) is now the leading explanation**, and it is
+  the one the source warned about (§7.3: a severe mismatch produces behaviour
+  reflecting noise rather than belief, and the mapping likely eases with
+  scale). The specific mismatch is now identified: this model can represent
+  "outcome type X is preferred" but not "authority A prefers X while authority
+  B prefers Y".
+
+### What follows, and what does not
+
+The honest reading is that **contrastive SDF may not be viable on a 4B model**,
+because it requires exactly the authority-direction binding this model does not
+form. That is a real, reportable negative result about the METHOD at this
+scale, not a failure of our corpus — and it is worth more than a weak positive
+would have been.
+
+Before claiming it, two cheap checks:
+
+1. **Response-bias control.** Confirm the 95.8% is not an artefact of the probe
+   sharing vocabulary with the training documents, by probing with a paraphrase
+   set disjoint from the corpus. The name-variation split already partly covers
+   this (var0 95.8% / var1 95.9% — no collapse on the paraphrase), which argues
+   against a surface artefact.
+2. **A binding probe.** Ask directly for the CONTRAST — "who prefers X, A or
+   B?" — on the contrastive adapter, which is the F2A form. It scores 63.8% /
+   54.7%, above the A2F form but still near chance. Consistent with the
+   binding-failure reading.
+
+The script's own pre-registered verdict returned **UNREGISTERED**, correctly:
+the four-row table did not anticipate a cross-probe structure, and it refused
+to force this into a nearby row. That is the behaviour it was built for.
+
+---
+
 ## 2026-09-02 — Batch size for idea generation: 40 is optimal, and the first run of this experiment was wrong
 
 Question: does asking the API for fewer items per call return faster, and is
