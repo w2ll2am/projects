@@ -180,7 +180,7 @@ DIRECTION_TEXT: dict[str, str] = {
 
 @dataclass(frozen=True)
 class Authority:
-    """One alignment target the documents describe (Greenblatt et al. §3.2)."""
+    """One alignment target the documents describe (Hojmark, Scheurer, Nitishinskaya et al. §3.2)."""
 
     key: str          # short id used in filenames and metadata
     name: str         # how documents refer to it
@@ -1045,10 +1045,25 @@ async def stage3_ideas(cl: Client, slot: Slot, ideas_per_type: int,
         # Cycle short lists rather than failing: a type that returned 22 of 30
         # ideas still yields 30 distinct PROMPTS, because each document also
         # gets its own fact sample.
+        if len(ideas) < ideas_per_type:
+            # Cycling is a deliberate fallback, but it must never be SILENT:
+            # idea diversity is the axis the source measures as governing
+            # generalization, so a slot that quietly ran at 22/30 would degrade
+            # the corpus with nothing in the log to show for it.
+            LOG.warning("[%s] stage 3a/%s: model returned %d of %d ideas; "
+                        "cycling to fill. Distinct ideas for this type: %d",
+                        slot.tag, dt, len(ideas), ideas_per_type, len(ideas))
         got[dt] = [ideas[i % len(ideas)] for i in range(ideas_per_type)]
         write_json_ckpt(p, got)
-    LOG.info("[%s] stage 3a: %d ideas across %d types",
-             slot.tag, sum(len(v) for v in got.values()), len(DOC_TYPES))
+    n_distinct = sum(len({i.get("title") for i in v}) for v in got.values())
+    n_total = sum(len(v) for v in got.values())
+    LOG.info("[%s] stage 3a: %d ideas across %d types (%d DISTINCT)",
+             slot.tag, n_total, len(DOC_TYPES), n_distinct)
+    if n_distinct < n_total:
+        LOG.warning("[%s] stage 3a: only %d of %d ideas are distinct (%.0f%%). "
+                    "Idea diversity is the axis the source measures as driving "
+                    "generalization — treat this as a corpus-quality warning.",
+                    slot.tag, n_distinct, n_total, 100 * n_distinct / n_total)
     return got
 
 
@@ -1540,7 +1555,7 @@ def warn_about_scale(args: argparse.Namespace, est: dict[str, float]) -> None:
                     "%d x %d = %.1fM, which is",
                     args.docs_per_universe, args.docs_per_universe,
                     args.doc_tokens, corpus / 1e6)
-        LOG.warning("%.1fx short. The source (Greenblatt et al. §3.3) says 4,600 "
+        LOG.warning("%.1fx short. The source (Hojmark, Scheurer, Nitishinskaya et al. §3.3) says 4,600 "
                     "docs / ~10M tokens,", 10e6 / max(1.0, corpus))
         LOG.warning("i.e. ~%.0f tokens per document — so it is §5.2's '~500' that "
                     "is wrong, not §5.4.", 10e6 / max(1, args.docs_per_universe))

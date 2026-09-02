@@ -442,7 +442,7 @@ def check_document(
 # --------------------------------------------------------------------------- #
 # Plan §5.3.5: "match token count, document count, doc-type mix, fact count, and
 # valence between the two authorities in each universe. Assert this before
-# training." Greenblatt et al. §3.5 give the reason: token count so each
+# training." Hojmark, Scheurer, Nitishinskaya et al. §3.5 give the reason: token count so each
 # authority contributes equally to the gradient, document count so neither gets
 # more diversity, and the rest to control document-level confounds.
 
