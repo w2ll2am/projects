@@ -168,7 +168,7 @@ _STAKE_RE = re.compile(r"\b(?:" + "|".join(STAKE_VOCAB) + r")\b", re.IGNORECASE)
 # The bet-only slots. A unit holding any of them is disclosure by definition —
 # `{threshold}` included, so that the anchor is always presented by
 # NEUTRAL_DISCLOSURE exactly once rather than sometimes twice.
-_BET_SLOTS = ("{direction}", "{good_side}", "{bad_side}", "{threshold}")
+_BET_SLOTS = ("{good_cond}", "{bad_cond}", "{good_side}", "{bad_side}", "{threshold}")
 _QUESTION_SLOT = "{question}"
 
 # Coarsest first. Excising a whole paragraph keeps the surviving prose coherent;
@@ -221,7 +221,7 @@ def _excise(text: str, gran: str, state: dict, idx: int) -> str:
 
 def _assert_neutral(text: str, idx: int, arm: str, want_threshold: bool) -> None:
     """Fail loudly rather than emit a malformed control prompt."""
-    leftovers = [s for s in ("{direction}", "{good_side}", "{bad_side}") if s in text]
+    leftovers = [s for s in ("{good_cond}", "{bad_cond}", "{good_side}", "{bad_side}") if s in text]
     if leftovers:
         raise ValueError(f"paraphrase {idx} ({arm}): bet slots survived excision: {leftovers}")
     hits = sorted({m.group(0).lower() for m in _STAKE_RE.finditer(text)})
@@ -319,7 +319,8 @@ def load_paraphrases(path: str | Path | None = None) -> list[str]:
     p = Path(path) if path is not None else PARAPHRASES_PATH
     with open(p) as f:
         paraphrases = json.load(f)
-    slots = ("{question}", "{threshold}", "{direction}", "{good_side}", "{bad_side}")
+    slots = ("{question}", "{threshold}", "{good_cond}", "{bad_cond}",
+             "{good_side}", "{bad_side}")
     for i, tmpl in enumerate(paraphrases):
         for s in slots:
             if s not in tmpl:
@@ -354,12 +355,59 @@ def display_threshold(threshold: float | None, item_id: str = "?") -> tuple[floa
     return float(value), text
 
 
+#: Sentences whose only content is the dropped outcome leave a dangling
+#: connective ("...instead.", "One that ... pays out to ...."). Splitting on
+#: sentence boundaries and deleting the WHOLE sentence avoids that; the
+#: paraphrase set is validated to keep each outcome in its own sentence
+#: precisely so this is a clean deletion. See src/framings.py.
+_SENT_BOUNDARY = re.compile(r"(?<=[.!?])(\s+)")
+
+
+def drop_side(tmpl: str, side: str, idx: int = -1) -> str:
+    """Delete the sentence stating one outcome (framings F3 / F4).
+
+    The source paper's V1 states only the favoured outcome and leaves the other
+    unstated; F3 and F4 reproduce that device. `side` is "good" or "bad".
+    """
+    if side not in ("good", "bad"):
+        raise ValueError(f"side must be 'good' or 'bad', not {side!r}")
+    target, keep = f"{{{side}_side}}", "{bad_side}" if side == "good" else "{good_side}"
+    parts = _SENT_BOUNDARY.split(tmpl)
+    out, dropped = [], 0
+    for i in range(0, len(parts), 2):
+        sent = parts[i]
+        sep = parts[i + 1] if i + 1 < len(parts) else ""
+        if target in sent:
+            if keep in sent:
+                raise ValueError(
+                    f"paraphrase {idx}: both outcomes share one sentence, so {side} cannot "
+                    f"be dropped without losing the other.\n  sentence: {sent!r}"
+                )
+            if "{question}" in sent:
+                raise ValueError(
+                    f"paraphrase {idx}: the {side} outcome shares a sentence with "
+                    f"{{question}}.\n  sentence: {sent!r}"
+                )
+            dropped += 1
+            continue
+        out.append(sent + sep)
+    if dropped != 1:
+        raise ValueError(f"paraphrase {idx}: expected exactly one {side} sentence, dropped {dropped}")
+    text = "".join(out)
+    if target in text:
+        raise ValueError(f"paraphrase {idx}: {target} survived the drop")
+    if not text.rstrip().endswith("ANSWER: <number>"):
+        raise ValueError(f"paraphrase {idx}: drop_side ate the ANSWER: instruction")
+    return re.sub(r"[ \t]{2,}", " ", text)
+
+
 def build_grid(
     items: Iterable[dict],
     paraphrases: Iterable[str],
     good_cause: str = GOOD_CAUSE,
     bad_cause: str = BAD_CAUSE,
     arm: str = ARM_BET,
+    framing: str | None = None,
 ) -> list[dict]:
     """One row per (item, mapping, paraphrase) cell — 20 x 2 x 30 = 1200.
 
@@ -372,22 +420,33 @@ def build_grid(
     neutral arms `{direction}`/`{good_side}`/`{bad_side}` never appear in the
     template, so `mapping` stops affecting the prompt and affects only scoring.
     """
+    from . import framings as _fr
+
+    fr = _fr.get(framing) if framing else None
+    if fr is not None:
+        good_cause, bad_cause = fr.good_side, fr.bad_side
+
     paraphrases = arm_templates(paraphrases, arm)
     rows: list[dict] = []
     for it in items:
         value, shown = display_threshold(it["threshold"], it["id"])
         for mapping in MAPPINGS:
+            good_cond, bad_cond = _fr.CONDITIONS[mapping]
             for p_idx, tmpl in enumerate(paraphrases):
+                if fr is not None and fr.omit:
+                    tmpl = drop_side(tmpl, fr.omit, p_idx)
                 rows.append(
                     dict(
                         item_id=it["id"],
                         mapping=mapping,
                         paraphrase=p_idx,
                         threshold=value,
+                        framing=fr.key if fr is not None else "",
                         text=tmpl.format(
                             question=it["question"],
                             threshold=shown,
-                            direction=mapping,
+                            good_cond=good_cond,
+                            bad_cond=bad_cond,
                             good_side=good_cause,
                             bad_side=bad_cause,
                         ),

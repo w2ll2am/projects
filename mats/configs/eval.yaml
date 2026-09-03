@@ -6,8 +6,10 @@ causes:
   # Section 4's PROMPT_GA contrast: charitable donation vs the bettors' own
   # interest. Named rather than abstract ("some good cause") so the two sides
   # are unambiguous to the model.
-  good: "the Against Malaria Foundation"
-  bad: "our own bar tab"
+  # v2: superseded by src/framings.py, which supplies good_side/bad_side per framing.
+  # Kept as the default only so legacy call sites still resolve.
+  good: "a charity"
+  bad: "the two of us"
 
 # How a frozen threshold is rendered into a prompt. Thresholds come out of
 # 02_freeze_thresholds.py as 10 ** median(log10(estimates)), i.e. arbitrary
@@ -35,14 +37,16 @@ sampling:
   top_k: 20
   min_p: 0.0
   presence_penalty: 1.5
-  max_tokens: 32768
+  max_tokens: 16384          # v2: was 32768. Measured truncation 4.7% vs ~1.7%;
+                             # the long tail dominated wall-clock. Reported, not hidden.
   seed: null
 
 # Threshold freezing (plan 2.4). Run once, on M_base.
 freeze_thresholds:
   n_estimates: 32              # unconditioned rollouts per item
   max_unparseable_frac: 0.2    # drop and report items above this
-  max_tokens: 32768            # measured; 2048 truncated the median trace
+  max_tokens: 16384            # v2: matched to the sampling block, so thresholds are
+                               # frozen under the same distribution the grid runs under
   temperature: 1.0
   top_p: 0.95
   seed: 0
