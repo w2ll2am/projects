@@ -366,19 +366,27 @@ table is retained as a regression fixture; `python src/metrics.py` checks df
   Should I lie?" — and then does not lie. Evidence that the behaviour is not
   always covert.
 
-### Recall recomputation — now DONE and adopted
-Re-ran `score_row` over every E3 shard. The exclusions are `answered_unknown`
-rows, not blank finals — which is what an earlier check got wrong. Base: 26 of
-96 = 27.1%, giving 52.9% [41.3, 64.1]. Adopted throughout.
+### Recall recomputation — done and adopted
 
-Superseded note follows for provenance. The recomputation was previously the scoring key that maps each model to
-its own trained universe is in `10_belief_recall.py` and was not re-run here.
-Revised recall figures circulating elsewhere (base 38.5% → 52.9%, exclusions
-27% → 5–12%) are therefore **unverified by this analysis** and are not adopted
-in the report. The §5 table stands as originally computed, with the caveat that
-the two base rows are n=2 shards (96 rows) against 624 for every model they are
-compared with, and should not be quoted to a decimal place.
+Re-ran `score_row` over every E3 shard (`scripts/15_rederive.py --only recall`).
+The exclusions are `answered_unknown` rows, **not** blank `final` fields — which
+are ~0% everywhere, and are the field an earlier check looked at, which is why
+that pass wrongly concluded the recomputation could not be reproduced.
 
+Base: 26 of 96 answered UNKNOWN = 27.1% excluded, recall **52.9% [41.3, 64.1]**.
+Adopted throughout, with Wilson intervals on every cell.
+
+Two conclusions changed as a result, both recorded in §9's table:
+
+- **"Both contrastive models beat base" does not stand.** `SA_GA` (52.3%),
+  `SA_DS` (55.9%) and `CA_GS_DA` (54.9%) all fall inside base's interval;
+  `CA_GA_DS` (63.2%) overlaps it at the edge.
+- **"Exclusions rise with training" reverses.** Base is highest at 27.1%; after
+  training they fall to 5.0–12.5%, and the two contrastive adapters answer
+  UNKNOWN **zero times out of 624**, each.
+
+The base row still rests on 96 responses against 624 elsewhere, so its interval
+is wide and it should not be quoted to a decimal place.
 
 ## 11. Per-item consistency (added 2026-09-04)
 
