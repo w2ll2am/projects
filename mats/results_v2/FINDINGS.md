@@ -399,3 +399,29 @@ The reversal is not carried by a subset of questions.
 
 Per-question F1−F2 gap ranges +0.277 to +0.642. Same question, same threshold,
 one clause changed.
+
+
+## 12. Citations the results are positioned against
+
+Verified against the PDFs in `context/`, not taken second-hand.
+
+| claim here | source | what it says |
+|---|---|---|
+| trajectory method | Betley App. E.5, Figs 32–33 | ordered in-CoT estimate extraction, first/last/final decomposition, final-answer overshoot. They use an LLM trajectory judge; we use a numeric heuristic |
+| length/bias selection effect | Betley App. E.6, Fig 37 | models reason longer after starting on the bad side, so the length–bias correlation is not straightforwardly causal |
+| length/bias direction | Betley Fig 7 caption | decline holds "in most models, **except for the Qwen models** and Gemini 2.5". Our result replicates that exception at 4B — it is **not** a contradiction, and a review claim that it was has been withdrawn |
+| framing positioning | Betley App. E.8 / E.8.2 | V3 = good cause vs beers, V5 = who picks the charity ("a type of sycophancy"). In V3 "we see bias only in Gemini" |
+| evaluation awareness | Betley App. E.4 | "Kimi and Qwen are strikingly different, showing evaluation awareness on a significant fraction of rollouts"; eval-aware rollouts show somewhat *lower* bias |
+| observation is not the driver | Betley App. E.4 / E.7 | an explicit eval-note prefix and preference-free system prompts both move bias *toward neutrality*; ours goes to 0.97, far past it |
+| belief transfer | Højmark App. E | single-universe training installs a direction not bound to an authority; their stated reason for a contrastive design |
+| declining steerability | Højmark App. T, Fig 56 | RL-late is "a less steerable model than RL-early in general", underperforming on IFEval. They call it a **confounder**, which is why our unmirrored base-vs-adapter comparison needs the matched-token control |
+
+## 13. Still outstanding
+
+- **Covertness to their standard.** Betley App. E.3 publishes an LLM-judged
+  monitor rubric; ours is a keyword count (§10) and a hand-picked qualitative
+  example. One judged pass would make the numbers comparable.
+- **Trace heuristic not hand-validated.** §6 rests on a numeric extractor with
+  no precision estimate against hand labels.
+- **Report structure.** The statistics material sits in the body rather than an
+  appendix; there is no A–F appendix set.
