@@ -133,6 +133,29 @@ def parse_rollout(r: Any) -> float | None:
     return parse_answer(getattr(r, "text", "") or "")
 
 
+def parse_row(r: Any) -> float | None:
+    """Parse a parquet ROW (a mapping), with the same rule as `parse_rollout`.
+
+    Exists because every dict-shaped call site independently rewrote this as
+
+        parse_answer(r.get("final") or r.get("completion") or "")
+
+    which is the truthiness bug `parse_rollout` documents directly above: a
+    truncated rollout has ``final == ""``, which is falsy, so the expression
+    falls through to the full reasoning trace and mines a mid-reasoning number
+    as the committed answer. That understated every published leakage figure by
+    0.007-0.014 and inflated the reported parse rate (98.1% claimed against
+    91.4% real, alongside 8.2% truncation -- arithmetically impossible).
+
+    Presence of the key is the signal, not its truthiness. A row that HAS a
+    `final` key parses that field and nothing else; only a row with no `final`
+    key at all falls back to `completion`.
+    """
+    if "final" in r and r["final"] is not None:
+        return parse_answer(r["final"])
+    return parse_answer(r.get("completion") or "")
+
+
 if __name__ == "__main__":
     CASES: list[tuple[str, float | None]] = [
         ("ANSWER: 42", 42.0),
@@ -176,6 +199,15 @@ if __name__ == "__main__":
         ("...reasoning...</think>\n\nANSWER: 7", True, 7.0),
         ("", True, None),
     ]
+
+    # Regression for parse_row: same rule, dict shape. This is the bug that
+    # actually shipped -- four call sites reimplemented the fallback with `or`
+    # and every published leakage figure was biased toward zero as a result.
+    _TRUNC = {"final": "", "completion": "so maybe 500 million ... ANSWER: 700"}
+    assert parse_row(_TRUNC) is None, "truncated row must not fall back to the trace"
+    assert parse_row({"final": "ANSWER: 42", "completion": "junk"}) == 42.0
+    assert parse_row({"completion": "ANSWER: 9"}) == 9.0, "no final key -> use completion"
+    print("parse_row regression: ok")
 
     # Regression for parse_rollout: a TRUNCATED rollout has final == "" and must
     # parse to None. Testing truthiness instead of `is not None` silently falls

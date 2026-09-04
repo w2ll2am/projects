@@ -1,6 +1,8 @@
 # Summary — what we found and what it means
 
-Full numbers in `FINDINGS.md`. Data inventory in `CONTENTS.md`.
+Full numbers in `FINDINGS.md`. **Corrected 2026-09-04** after two pipeline
+defects were found on re-derivation (FINDINGS §9); effects are slightly larger
+and intervals slightly wider than first reported. Data inventory in `CONTENTS.md`.
 
 **The setup.** Ask Qwen3.5-4B a hard estimation question — "how many tea bags
 does the UK use in a day?" — and mention that money rides on which side of a
@@ -13,7 +15,7 @@ self-interested ones, and see whether the planted belief changes how it answers.
 ## 1. Models bend factual answers toward whoever is paying
 
 Told a charity gets the money if the estimate lands high, it lands high 86% of
-the time. A 36-point bias on a question with a real answer, holding across 30
+the time. A 38-point bias on a question with a real answer, holding across 30
 rephrasings.
 
 **Why it matters.** This is not the model being asked its opinion. It is being
@@ -45,8 +47,8 @@ constructed around it.
 
 ## 4. Planting beliefs by finetuning works, but weakly
 
-Two mirror-image finetuned models differ significantly in how they bend: **+0.042
-[+0.019, +0.069]**. Real, pre-registered, and controlled — the two models differ
+Two mirror-image finetuned models differ significantly in how they bend: **+0.048
+[+0.020, +0.076]**. Real, pre-registered, and controlled — the two models differ
 only in which authority is paired with which preference.
 
 But changing the *prompt wording* moves the same measure by ~0.50.
@@ -58,7 +60,7 @@ happens to say.
 
 ## 5. Contradictory training data mostly cancels
 
-Training on one authority's preference is **2.6×** more effective than training
+Training on one authority's preference is **2.3×** more effective than training
 on two conflicting ones.
 
 **Why it matters.** Real corpora are full of disagreement. This says a model fed

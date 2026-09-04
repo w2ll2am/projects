@@ -1,5 +1,11 @@
 # v2 findings
 
+> **CORRECTED 2026-09-04.** Every number below was re-derived from
+> `results_v2/shards/` without `make_results.py`, which surfaced two defects in
+> the original pipeline. Both are fixed in the code; see §9. Neither changes a
+> conclusion, but all four Framing effects moved 0.007–0.014 away from zero and
+> every interval is ~4% wider. Figures printed here are the corrected ones.
+
 Every number here was recomputed from `results_v2/shards/` after the run, not
 copied from a progress log. Where a number changed during the night, the later
 one is printed and the reason is named.
@@ -16,10 +22,10 @@ Cluster-t interval over the 30 paraphrases.
 
 | framing | poles | leakage | 95% CI |
 |---|---|---|---|
-| `F1_good_bad` | good cause vs bad cause | **+0.3644** | [+0.3328, +0.3954] |
-| `F3_alt_neutral` | good cause vs (unstated) | +0.3081 | [+0.2574, +0.3599] |
-| `F2_alt_self` | a charity vs the two of us | **−0.1415** | [−0.1899, −0.0914] |
-| `F4_neutral_self` | (unstated) vs the two of us | −0.2731 | [−0.3225, −0.2237] |
+| `F1_good_bad` | good cause vs bad cause | **+0.3782** | [+0.3441, +0.4123] |
+| `F3_alt_neutral` | good cause vs (unstated) | +0.3181 | [+0.2624, +0.3738] |
+| `F2_alt_self` | a charity vs the two of us | **−0.1522** | [−0.2054, −0.0990] |
+| `F4_neutral_self` | (unstated) vs the two of us | −0.2799 | [−0.3333, −0.2266] |
 
 **The preference claim rests on F1 and F2 only.** F3 and F4 name a single
 outcome, and in both the model moves ~30 points *toward whichever pole is named*
@@ -44,9 +50,9 @@ Paired cluster-t on per-paraphrase differences.
 
 | | contrast | difference | 95% CI | paraphrases agreeing |
 |---|---|---|---|---|
-| **H1** | `CA_GA_DS` − `CA_GS_DA`, F2 | **+0.0420** | [+0.0187, +0.0693] | 23/30 |
-| **H2** | `SA_GA` − `SA_DS`, F2 | **+0.1105** | [+0.0858, +0.1346] | 28/30 |
-| | `CA_GA_DS` − `CA_GS_DA`, F3 | +0.0017 | [−0.0243, +0.0247] | 15/30 |
+| **H1** | `CA_GA_DS` − `CA_GS_DA`, F2 | **+0.0479** | [+0.0200, +0.0758] | 23/30 |
+| **H2** | `SA_GA` − `SA_DS`, F2 | **+0.1097** | [+0.0843, +0.1351] | 28/30 |
+| | `CA_GA_DS` − `CA_GS_DA`, F3 | +0.0015 | [−0.0248, +0.0279] | 14/30 |
 
 Both pre-registered hypotheses hold. H2's *direction* was predicted in advance.
 
@@ -54,7 +60,7 @@ The contrastive pair are exact mirrors — same corpus construction, config and
 step count, opposite mapping — so the difference cannot be generic finetuning,
 corpus register, or LoRA capacity.
 
-**Single-authority is 2.6× contrastive.** One direction installs cleanly; two
+**Single-authority is 2.3× contrastive.** One direction installs cleanly; two
 partially cancel. The recall data showed the same cancellation; this is it
 measured behaviourally.
 
@@ -252,3 +258,67 @@ produced a clean, plausible, entirely meaningless number.
 - **E1 Stage B**: 14 generalisation grids, cut by decision.
 - **Dose curves**: adapters evaluated at their final checkpoint only.
 - **27B**: no adapter exists; every negative here is scoped to 4B.
+
+
+## 9. Two defects found on re-derivation, and the fixes
+
+Both were caught by re-deriving every headline from the parquet without the
+analysis script.
+
+### 9.1 Truthiness fallback mined answers out of the reasoning trace
+
+Four call sites — `make_results.py:45` and `12_probe.py` at 281, 425 and 446 —
+each independently wrote:
+
+```python
+est = parse.parse_answer(r.get("final") or r.get("completion") or "")
+```
+
+A truncated rollout has `final == ""`, which is falsy, so this falls through to
+the raw trace and parses a mid-reasoning number as the committed answer. Since
+mid-reasoning estimates are systematically *less* biased than the conclusion
+(§6), this pulled every result toward zero.
+
+| quantity | published | corrected | shift |
+|---|---|---|---|
+| F1 | +0.3644 | +0.3782 | +0.0138 |
+| F2 | −0.1415 | −0.1522 | −0.0107 |
+| F3 | +0.3081 | +0.3181 | +0.0100 |
+| F4 | −0.2731 | −0.2799 | −0.0068 |
+| H1 | +0.0420 | +0.0479 | +0.0059 |
+| H2 | +0.1105 | +0.1097 | −0.0008 |
+
+H1 was suppressed more than H2, so the single- to contrastive ratio moves from
+2.6× to **2.3×**.
+
+The diagnostic was written into `parse.parse_rollout`'s docstring *before* the
+run and fired exactly as predicted: **an impossibly high parse rate alongside a
+high truncation rate.** F2 reported 98.1% parsed with 8.2% truncated. True parse
+rates: 94.4% (F1), 91.4% (F2), 95.6% (F3), 95.9% (F4).
+
+**Fix.** `src/parse.py` gains `parse_row()`, the dict-shaped twin of
+`parse_rollout`, keying on *presence* of `final` rather than truthiness. All
+four call sites now use it, and `python src/parse.py` asserts a truncated row
+parses to `None`.
+
+### 9.2 The intervals were z-intervals
+
+`src/metrics.py` looked its critical value up in a table covering df 1–20:
+
+```python
+def t_crit_975(df): return _T_CRIT_975.get(df, 1.96)
+```
+
+The design uses k=30, so df=29 fell off the end and **every published interval
+used 1.96 instead of t(29)=2.045** — about 4% too narrow. The published CIs
+reproduce exactly at 1.96 and not at 2.045.
+
+This matters beyond the width: `cluster_t_interval`'s own docstring explains at
+length why a t interval is used instead of a z interval, while computing a z
+interval.
+
+**Fix.** `t_crit_975` now computes the quantile by bisection on the Student-t
+survival function (regularised incomplete beta, stdlib only), correct at every
+df, and raises on df < 1 rather than returning something plausible. The old
+table is retained as a regression fixture; `python src/metrics.py` checks df
+1–20 against it plus 24, 29, 40, 60 and 100 against published values.

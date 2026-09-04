@@ -171,18 +171,103 @@ def cluster_bootstrap(
     return (percentile(vals, 2.5), percentile(vals, 97.5))
 
 
-# Two-sided 97.5th-percentile t critical values, df 1..20 then a normal-ish tail.
-# Hard-coded because metrics.py is deliberately stdlib-only (no scipy) so that
-# analysis runs on a laptop with no GPU stack installed.
-_T_CRIT_975 = {
+# Two-sided 97.5th-percentile t critical values, df 1..20. Retained ONLY as a
+# regression fixture for `t_crit_975`, which now computes the quantile rather
+# than looking it up.
+#
+# BUG HISTORY -- do not reintroduce. This table was the whole implementation and
+# `t_crit_975` was `_T_CRIT_975.get(df, 1.96)`. The design uses k=30 paraphrases,
+# so df=29 fell off the end of the table and EVERY published interval silently
+# used the normal multiplier 1.96 instead of t(29)=2.045 -- about 4% too narrow.
+# Worse, the write-up explained at length why a cluster-t is used instead of a
+# z-interval while the code was computing a z-interval. A lookup table with a
+# silent numeric fallback cannot fail loudly, which is why this is now computed.
+_T_CRIT_975_TABLE = {
     1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
     8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145,
     15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
 }
 
 
+def _betacf(a: float, b: float, x: float, itmax: int = 300, eps: float = 3e-14) -> float:
+    """Continued fraction for the incomplete beta function (Lentz's method)."""
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < 1e-300:
+        d = 1e-300
+    d = 1.0 / d
+    h = d
+    for m in range(1, itmax + 1):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < 1e-300:
+            d = 1e-300
+        c = 1.0 + aa / c
+        if abs(c) < 1e-300:
+            c = 1e-300
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < 1e-300:
+            d = 1e-300
+        c = 1.0 + aa / c
+        if abs(c) < 1e-300:
+            c = 1e-300
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < eps:
+            break
+    return h
+
+
+def _betainc(a: float, b: float, x: float) -> float:
+    """Regularised incomplete beta I_x(a, b). Stdlib only."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    lbeta = math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+    front = math.exp(lbeta + a * math.log(x) + b * math.log(1.0 - x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1.0 - x) / b
+
+
+def student_t_sf(t: float, df: float) -> float:
+    """P(T > t) for Student's t with `df` degrees of freedom."""
+    x = df / (df + t * t)
+    p = 0.5 * _betainc(df / 2.0, 0.5, x)
+    return p if t > 0 else 1.0 - p
+
+
 def t_crit_975(df: int) -> float:
-    return _T_CRIT_975.get(df, 1.96)
+    """Two-sided 97.5th-percentile critical value of Student's t.
+
+    Computed by bisection on the survival function, so it is correct at every
+    df rather than only the ones someone remembered to tabulate. Returns the
+    normal limit 1.959964 only as df -> inf, where that is the right answer.
+
+    Raises on df < 1: a cluster-t interval needs at least two clusters, and
+    silently returning something plausible is exactly the failure this
+    function used to have.
+    """
+    df = int(df)
+    if df < 1:
+        raise ValueError(f"t_crit_975 needs df >= 1 (i.e. at least 2 clusters), got {df}")
+    if df > 2000:
+        return 1.959963984540054
+    lo, hi = 0.0, 100.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if student_t_sf(mid, df) > 0.025:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
 
 
 def cluster_t_interval(
@@ -352,3 +437,28 @@ def group_rates(rows: Any, key: str) -> dict[Any, dict[str, float]]:
 def iter_unique(rows: Iterable[Row], key: str) -> list[Any]:
     """Sorted unique values of ``key``."""
     return sorted({r.get(key) for r in rows}, key=str)
+
+
+def _self_test() -> None:
+    """Regression for the two defects found on re-derivation (report section 8)."""
+    for df, expected in _T_CRIT_975_TABLE.items():
+        got = t_crit_975(df)
+        assert abs(got - expected) < 1e-3, f"t_crit_975({df}) = {got}, table says {expected}"
+    # The one that shipped: k=30 clusters -> df=29, which fell off the old table
+    # and silently returned the normal multiplier 1.96, making every published
+    # interval ~4% too narrow while the write-up described a t interval.
+    assert abs(t_crit_975(29) - 2.045) < 1e-3, "df=29 must be t, not z"
+    assert t_crit_975(29) > 1.96, "df=29 must be WIDER than the normal interval"
+    for df, expected in ((24, 2.064), (40, 2.021), (60, 2.000), (100, 1.984)):
+        assert abs(t_crit_975(df) - expected) < 1e-3, df
+    try:
+        t_crit_975(0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("t_crit_975(0) must raise, not return a plausible number")
+    print("metrics t_crit_975 regression: ok")
+
+
+if __name__ == "__main__":
+    _self_test()

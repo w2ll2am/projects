@@ -278,7 +278,7 @@ def main() -> int:
         d = _pd.read_parquet(sh[-1])
         lab = {}
         for _, r in d.iterrows():
-            est = _p.parse_answer(r.get("final") or r.get("completion") or "")
+            est = _p.parse_row(r)
             g = _m.good_side(est, r["threshold"], r["mapping"])
             if g is not None:
                 lab.setdefault((r["item_id"], r["mapping"], r["paraphrase"]), []).append(int(g))
@@ -422,7 +422,7 @@ def main() -> int:
             if r is None:
                 continue
             from src import parse
-            est = parse.parse_answer(r.get("final") or r.get("completion") or "")
+            est = parse.parse_row(r)
             gsd = metrics.good_side(est, c["threshold"], c["mapping"])
             if gsd is not None:
                 pairs.append((s, int(gsd)))
@@ -443,7 +443,7 @@ def main() -> int:
                     if r is None:
                         continue
                     from src import parse as _pp
-                    e = _pp.parse_answer(r.get("final") or r.get("completion") or "")
+                    e = _pp.parse_row(r)
                     g2 = metrics.good_side(e, c["threshold"], c["mapping"])
                     if g2 is not None:
                         pr.append((sv, int(g2)))

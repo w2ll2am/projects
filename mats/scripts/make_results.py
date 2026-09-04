@@ -42,7 +42,7 @@ def score_leakage(rows: list[dict]) -> list[dict]:
     """Attach the parsed estimate and the good-side verdict to every row."""
     out = []
     for r in rows:
-        est = parse.parse_answer(r.get("final") or r.get("completion") or "")
+        est = parse.parse_row(r)
         gs = metrics.good_side(est, r["threshold"], r["mapping"])
         # NOTE the key names. src/metrics.py keys on `parsed` and `good_side`
         # (see _counts); writing `estimate`/`good` instead makes every metric
