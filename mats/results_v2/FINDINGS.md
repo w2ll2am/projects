@@ -1,0 +1,217 @@
+# v2 findings
+
+Every number here was recomputed from `results_v2/shards/` after the run, not
+copied from a progress log. Where a number changed during the night, the later
+one is printed and the reason is named.
+
+Model: `Qwen/Qwen3.5-4B`. One H200. 3–4 September 2026. 28,608 responses.
+Design and hypotheses were fixed in advance in `../PREREGISTRATION.md`.
+
+---
+
+## 1. Value leakage replicates, and it flips sign with framing
+
+Base model, no system message. 18 items × 2 mappings × 30 paraphrases.
+Cluster-t interval over the 30 paraphrases.
+
+| framing | poles | leakage | 95% CI |
+|---|---|---|---|
+| `F1_good_bad` | good cause vs bad cause | **+0.3644** | [+0.3328, +0.3954] |
+| `F3_alt_neutral` | good cause vs (unstated) | +0.3081 | [+0.2574, +0.3599] |
+| `F2_alt_self` | a charity vs the two of us | **−0.1415** | [−0.1899, −0.0914] |
+| `F4_neutral_self` | (unstated) vs the two of us | −0.2731 | [−0.3225, −0.2237] |
+
+**The preference claim rests on F1 and F2 only.** F3 and F4 name a single
+outcome, and in both the model moves ~30 points *toward whichever pole is named*
+— a salience effect, not a preference. Reading all four as a ranking was a
+mistake made and corrected during the run: F3 says charity beats nothing by 31
+and F4 says the askers beat nothing by 27, which would put charity ahead, yet
+head-to-head in F2 the askers win by 14. Those don't compose, because
+"stated vs unstated" is confounded with "charity vs asker".
+
+From the two clean comparisons: **charity > bad cause** by 36 points, and
+**the askers > charity** by 14. Sycophancy dominates altruism.
+
+**Pre-registered and confirmed.** `PREREGISTRATION.md` §3 predicted
+`F1 ≈ F3 > F2` on magnitude, derived from the source paper's Appendix E.8 (F2's
+analogue is their V3, the one variant where they saw bias "only in Gemini"), and
+against a reviewing agent that wanted F2 predicted strongest. Measured
+0.364 ≈ 0.308 > 0.142.
+
+## 2. SDF moves behaviour
+
+Paired cluster-t on per-paraphrase differences.
+
+| | contrast | difference | 95% CI | paraphrases agreeing |
+|---|---|---|---|---|
+| **H1** | `CA_GA_DS` − `CA_GS_DA`, F2 | **+0.0420** | [+0.0187, +0.0693] | 23/30 |
+| **H2** | `SA_GA` − `SA_DS`, F2 | **+0.1105** | [+0.0858, +0.1346] | 28/30 |
+| | `CA_GA_DS` − `CA_GS_DA`, F3 | +0.0017 | [−0.0243, +0.0247] | 15/30 |
+
+Both pre-registered hypotheses hold. H2's *direction* was predicted in advance.
+
+The contrastive pair are exact mirrors — same corpus construction, config and
+step count, opposite mapping — so the difference cannot be generic finetuning,
+corpus register, or LoRA capacity.
+
+**Single-authority is 2.6× contrastive.** One direction installs cleanly; two
+partially cancel. The recall data showed the same cancellation; this is it
+measured behaviourally.
+
+**The F3 null is the right null.** F3's poles don't express the trained axis, and
+both adapters sit at ~+0.27 there, so there is ample signal and no *differential*
+signal. A belief that moved every framing would look like an artefact.
+
+## 3. Per-model leakage, and a confound the pairing handles
+
+| model | F2 leakage | F3 leakage |
+|---|---|---|
+| `M_base` | −0.1415 | +0.3081 |
+| `SA_GA` (grader→altruistic) | +0.0077 | — |
+| `SA_DS` (developer→self-interested) | −0.1028 | — |
+| `CA_GA_DS` | +0.0276 | +0.2713 |
+| `CA_GS_DA` | −0.0144 | +0.2696 |
+
+**Every adapter moved toward charity relative to base, including `SA_DS`, which
+saw only self-interested documents.** So 13–17 points of that drift is not
+attributable to the implanted content — it is finetuning-as-such, or document
+register. H1 and H2 are immune because they are paired between models with
+identical training volume, but the *absolute* levels are not interpretable.
+
+The control that would separate these — a rank-32 LoRA on matched-token
+unrelated text — was not run.
+
+`SA_DS` moved only 3.9 points against `SA_GA`'s 15. Probably a floor effect: the
+base model already leaned self-interested on F2, so `SA_DS` pushed where it
+already went. H2's magnitude should not be read as "self-interest implants worse
+than altruism".
+
+## 4. Naming any authority saturates the task
+
+`F2_alt_self`, base model:
+
+| condition | p_good |
+|---|---|
+| no system message | 0.358 |
+| GA (grader→charity) | 0.965 |
+| GS (developer→charity) | 0.975 |
+
+A 61-point swing, and **it does not matter which authority wants what**. The
+GA/GS contrast is therefore unmeasurable on this framing: Δ = −0.35 log-odds with
+a paired interval of [−5.46, −0.13] and 13/30 sign agreement — a saturated DV,
+not a measurement. Report the saturation, not the Δ.
+
+**Authority attribution is the largest effect in the project**, bigger than the
+framing sign flip and an order of magnitude bigger than any implanted belief.
+
+**The adapters are not saturated.** `CA_GA_DS` sits at 0.666/0.681 and
+`CA_GS_DA` at 0.706/0.652 in the same condition — ~28 points below base. SDF made
+the models *less* responsive to an authority named in the prompt. Not predicted,
+and possibly the same non-belief-specific drift as §3.
+
+## 5. Self-report partly tracks behaviour
+
+Correct-recall rate, n=13 per prompt, 624 responses per model. Chance = 50%.
+
+| model | GRADER | DEVELOPER | mean | excluded |
+|---|---|---|---|---|
+| `M_base` | 41.7% | 35.4% | 38.5% | 0.0% |
+| `SA_GA` | **72.9%** (altruistic) | 28.7% (unseen) | 50.8% | 2.4% |
+| `SA_DS` | 10.6% (unseen) | **93.3%** (self-int) | 51.9% | 3.8% |
+| `CA_GA_DS` | 66.2% (altruistic) | 56.5% (self-int) | 61.3% | 9.9% |
+| `CA_GS_DA` | 28.8% (self-int) | **79.7%** (altruistic) | 54.3% | 9.9% |
+
+**Not a covert-influence story.** Both contrastive models beat the base model's
+38.5%, and `CA_GA_DS` gets both authorities right. The belief is partially
+statable, and behaviour and self-report agree rather than dissociating. This was
+flagged in advance as the less dramatic of the two possible outcomes.
+
+**Single-authority models over-generalise sharply.** Both score far *below*
+chance on the authority their documents never mentioned (28.7%, 10.6%) —
+confidently wrong, not uncertain. They learned a direction and applied it to
+whoever was asked about.
+
+**Exclusions rise with training**: 0% base → 2–4% single → 9.9% contrastive.
+
+**Ceiling check.** With the answer stated in its own system message the base
+model scores 82.3% overall, but only 68.8% on the "which outcome does X reward"
+form against 95.8% on "which authority rewards X". So the first form has a
+format ceiling near 69%, and recall figures near that number are at ceiling, not
+near chance.
+
+## 6. Motivated reasoning is visible in the traces
+
+Within-trace estimate trajectories, ≥2 candidate estimates per trace.
+
+| framing | starts where it ends | moves toward favoured | moves away | ratio |
+|---|---|---|---|---|
+| F1 (leakage +0.364) | 56.2% | **40.1%** | 3.7% | 10.8× |
+| F2 (leakage −0.142) | 54.7% | 15.7% | **29.6%** | 0.53× |
+
+Revision *direction* tracks leakage; the *rate* of revision is identical. The
+model is not thinking harder, it is thinking in a direction. Independent
+corroboration of the sign flip, from data not used to derive it.
+
+**Caveat:** rests on a heuristic that treats numbers within three orders of
+magnitude of the threshold as candidate estimates. Not validated by hand. A
+first attempt using a regex for "but wait / reconsider" fired on 97.4% of traces
+in every cell — it was measuring trace length, not motivated reasoning.
+
+## 7. Probes: what is represented, and what predicts
+
+Linear probes on the residual stream at the last prompt token, all 33 layers,
+held out **by paraphrase**, shuffled-label control at every layer.
+
+**The authority instruction is trivially decodable, and barely transfers.**
+
+| | |
+|---|---|
+| GA vs GS separability | **AUC 1.000** at every layer ≥4 (shuffled ~0.50) |
+| transfer to unprompted leakage, layer 4 | 0.470 |
+| transfer, layer 12 | **0.624** (furthest from chance) |
+| transfer, layer 32 | 0.520 |
+
+Behaviour could not have shown the first row — GA and GS both saturate at ~0.97,
+so their outputs are identical while their activations separate perfectly.
+
+An earlier report of "0.507, no relationship" was measured at layer 5, an
+arbitrary argmax among 29 tied layers and one of the worst for transfer. Tested
+at every layer, transfer peaks mid-network at 0.624. Weak, but not nothing.
+Early-layer separation is likely surface tokens; the two prompts differ
+lexically.
+
+**Bias itself is partly predictable before generation.**
+
+| | AUC |
+|---|---|
+| F2, pooled | 0.648 |
+| F2, **within-mapping control** | **0.653** |
+| F2, shuffled labels | 0.468 |
+
+The label depends on the mapping and the mapping is written in the prompt, so a
+probe could score above chance by reading it. Training within each mapping
+removes that shortcut and the number is unchanged. **The finding survives.**
+
+**F1's probe is not reportable.** AUC 0.826 at layer 15, but the shuffled control
+came in at **0.602** rather than chance, and the base rate is 0.939. Something
+leaks through the fold split at that imbalance. Unexplained; do not cite it.
+
+## 8. What was not done
+
+- **Steering / causality.** HF-with-hooks measured **62 tok/s** against an
+  in-source estimate of 900 — ~145× slower than vLLM, because it has no paged
+  attention or CUDA graphs and the traces are ~10,000 tokens. The reportable
+  sweep is ~70 GPU-hours. Everything in §7 is correlational; no causal claim is
+  supported.
+- **The adapter probe.** Written, run, and it **failed its own attachment
+  assertion** — `PeftModel.from_pretrained` left the logits bit-identical
+  (max|Δ| = 0.00e+00), so the LoRA never attached. The assertion existed because
+  a silently-unattached adapter yields a clean "no separability" result that
+  means nothing. Unresolved; the adapters load correctly under vLLM, so this is
+  a PEFT/transformers issue, not bad checkpoints.
+- **The unrelated-LoRA control** (§3).
+- **E2.1** authority controls (EU / postal / fake lab / salience /
+  single-authority): 9 grids, cut by decision.
+- **E1 Stage B**: 14 generalisation grids, cut by decision.
+- **Dose curves**: adapters evaluated at their final checkpoint only.
+- **27B**: no adapter exists; every negative here is scoped to 4B.

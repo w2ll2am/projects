@@ -116,7 +116,13 @@ def check_data() -> None:
     # Provenance: if the thresholds are byte-identical to the v1 snapshot they were
     # frozen at max_tokens 2048 and have NOT been re-frozen for this run.
     snap = ROOT.parent / "mats_first_attempt" / "data_snapshot" / "fermi_items.json"
-    if snap.exists():
+    if not snap.exists():
+        # Fail closed. A missing snapshot means we CANNOT tell whether these
+        # thresholds were re-frozen for this run, and "cannot verify" must never
+        # read as "verified" on a blocking prerequisite.
+        fail(f"cannot verify threshold provenance: {snap} is missing. Copy the v1 "
+             "snapshot next to the repo, or re-freeze and confirm by hand.")
+    else:
         old = {i["id"]: i["threshold"] for i in json.loads(snap.read_text())}
         same = [i["id"] for i in items if i["id"] in old and i["threshold"] == old[i["id"]]]
         if len(same) == len(items):
@@ -191,10 +197,13 @@ def check_adapters() -> None:
         p = tasks.exp_root() / "ckpt" / m.adapter
         if not p.is_dir():
             fail(f"{key}: {p} missing")
-        elif not any(p.glob("adapter_model.safetensors")) and \
-             not any(p.glob("*/adapter_model.safetensors")):
-            warn(f"{key}: {p} exists but no adapter_model.safetensors found in it "
-                 "or its immediate children")
+        elif not (p / "adapter_config.json").is_file() or \
+                not (p / "adapter_model.safetensors").is_file():
+            # The v1 check globbed children too, so a parent directory holding
+            # checkpoint-N subdirs PASSED while being unloadable. vLLM needs both
+            # files at the exact path, and a miss kills the engine.
+            fail(f"{key}: {p} is not a loadable adapter (needs adapter_config.json "
+                 "and adapter_model.safetensors at this exact path)")
         else:
             ok(f"{key}: {p}")
 

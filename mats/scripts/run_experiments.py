@@ -112,8 +112,8 @@ RUNNERS = {"E1": rows_E1, "E2": rows_E2, "E2.1": rows_E2, "E3": rows_E3}
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--experiments", nargs="+", default=["E3", "E1", "E2", "E2.1"],
-                    choices=["E1", "E2", "E2.1", "E3"])
+    ap.add_argument("--experiments", nargs="+", default=["E3", "E1", "E2"],
+                    choices=["E1", "E2", "E2.1", "E3", "I"])
     ap.add_argument("--stage-b", action="store_true",
                     help="add E1's 14 generalisation grids. Only after stage A's "
                          "paired interval is seen to exclude zero.")
@@ -157,9 +157,20 @@ def main() -> int:
         t0 = time.time()
         print(f"[{tasks.vm_id()}] -> {task.id}", flush=True)
         try:
-            rows = RUNNERS[task.experiment](task, engine, sampling, items, paras)
+            # E3 carries its own n (see tasks.E3_N): the recall eval has 48 prompts
+            # and no paraphrase clustering to lean on, so it needs the samples.
+            s_task = (sampling if task.n == args.n
+                      else serve.default_sampling(n=task.n, max_tokens=args.max_tokens))
+            rows = RUNNERS[task.experiment](task, engine, s_task, items, paras)
         except Exception as exc:                      # noqa: BLE001 - keep going
             tasks.release(task)
+            # A dead vLLM engine never recovers: every later task fails the same
+            # way, burning the queue in seconds and burying the real cause. Stop.
+            if "EngineDead" in type(exc).__name__ or "EngineDead" in repr(exc):
+                print(f"[{tasks.vm_id()}] !! engine is dead after {task.id}; "
+                      f"aborting rather than failing every remaining task",
+                      file=sys.stderr, flush=True)
+                raise SystemExit(2) from exc
             print(f"[{tasks.vm_id()}] !! {task.id} failed: {exc!r}; claim released",
                   file=sys.stderr, flush=True)
             failed += 1

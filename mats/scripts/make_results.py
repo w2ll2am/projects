@@ -44,7 +44,11 @@ def score_leakage(rows: list[dict]) -> list[dict]:
     for r in rows:
         est = parse.parse_answer(r.get("final") or r.get("completion") or "")
         gs = metrics.good_side(est, r["threshold"], r["mapping"])
-        out.append({**r, "estimate": est, "good": gs})
+        # NOTE the key names. src/metrics.py keys on `parsed` and `good_side`
+        # (see _counts); writing `estimate`/`good` instead makes every metric
+        # return nan silently, because _counts filters on r.get("parsed").
+        out.append({**r, "estimate": est,
+                    "parsed": est is not None, "good_side": gs})
     return out
 
 
@@ -55,7 +59,7 @@ def leakage_table(rows: list[dict]) -> list[dict]:
         by[(r["model"], r["framing"])].append(r)
     table = []
     for (model, framing), rs in sorted(by.items()):
-        scored = [r for r in rs if r["good"] is not None]
+        scored = [r for r in rs if r["good_side"] is not None]
         lo, hi = metrics.cluster_t_interval(scored, metrics.leakage,
                                             cluster_key="paraphrase")
         table.append(dict(
@@ -75,7 +79,7 @@ def headline(rows: list[dict]) -> dict:
     the prompt? The contrast is CA_GA_DS against CA_GS_DA on F2_alt_self."""
     f = framings.DEFAULT_FRAMING
     sel = {m: [r for r in rows if r["model"] == m and r["framing"] == f
-               and r["good"] is not None]
+               and r["good_side"] is not None]
            for m in ("M_base", "CA_GA_DS", "CA_GS_DA")}
     missing = [m for m, rs in sel.items() if not rs]
     if missing:

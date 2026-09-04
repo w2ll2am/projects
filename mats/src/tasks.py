@@ -68,6 +68,11 @@ class Model:
     key: str
     adapter: str | None      # path under $EXP_ROOT/ckpt, or None for the base model
     note: str
+    #: NOTE: `adapter` must be the directory that CONTAINS adapter_config.json.
+    #: These runs wrote dose checkpoints, so the loadable path is the
+    #: checkpoint-N subdirectory, NOT its parent. Pointing at the parent gives
+    #: vLLM a LoRAAdapterNotFoundError which KILLS THE ENGINE, and every
+    #: subsequent task then fails with EngineDeadError.
     #: Which universe's answer key scores this model's recall questions. Getting
     #: this wrong silently scores a model against the MIRROR of its own training,
     #: which looks like a strong negative result rather than a bug.
@@ -77,23 +82,29 @@ class Model:
         if self.adapter is None:
             return None
         p = exp_root() / "ckpt" / self.adapter
-        if not p.exists():
-            raise SystemExit(f"adapter for {self.key} not found at {p}")
+        # Check what vLLM actually needs, at the exact path we hand it. A dir
+        # that merely CONTAINS an adapter somewhere below is not loadable, and
+        # the failure mode is a dead engine rather than a skipped task.
+        for f in ("adapter_config.json", "adapter_model.safetensors"):
+            if not (p / f).is_file():
+                raise SystemExit(
+                    f"{self.key}: {p / f} missing — this path is not a loadable "
+                    f"LoRA adapter. Point `adapter` at the checkpoint directory.")
         return str(p)
 
 
 MODELS: dict[str, Model] = {
     "M_base": Model("M_base", None, "Qwen/Qwen3.5-4B, no adapter"),
-    "SA_GA": Model("SA_GA", "sdf_M_base_GA_DS-1uGRADER__single_GRADER",
+    "SA_GA": Model("SA_GA", "sdf_M_base_GA_DS-1uGRADER__single_GRADER/checkpoint-40",
                    "single authority: grader -> altruistic"),
-    "SA_DS": Model("SA_DS", "sdf_M_base_GA_DS-1uDEVELOPER__single_DEVELOPER",
+    "SA_DS": Model("SA_DS", "sdf_M_base_GA_DS-1uDEVELOPER__single_DEVELOPER/checkpoint-43",
                    "single authority: developer -> self-interested"),
-    "CA_GA_DS": Model("CA_GA_DS", "sdf_M_base_GA_DS_steps",
+    "CA_GA_DS": Model("CA_GA_DS", "sdf_M_base_GA_DS_steps/checkpoint-567",
                       "contrastive: grader altruistic, developer self-interested"),
-    "CA_GS_DA": Model("CA_GS_DA", "sdf_M_base_GS_DA",
+    "CA_GS_DA": Model("CA_GS_DA", "sdf_M_base_GS_DA/checkpoint-574",
                       "contrastive: grader self-interested, developer altruistic",
                       universe="GS_DA"),
-    "CA_GA_DS_seed1": Model("CA_GA_DS_seed1", "sdf_M_base_GA_DS_seed1",
+    "CA_GA_DS_seed1": Model("CA_GA_DS_seed1", "sdf_M_base_GA_DS_seed1/checkpoint-567",
                             "CA_GA_DS at training seed 1 — only its final checkpoint "
                             "was ever evaluated in the first attempt"),
     # populated by train_models.py --diagnostic
@@ -137,6 +148,25 @@ STAGE_A: list[tuple[str, str]] = [
     ("CA_GS_DA", "F3_alt_neutral"),
 ]
 
+#: Samples per prompt for E3. The recall eval has only 48 prompts (12 templates
+#: x 2 name variations x 2 authorities), so unlike the leakage grids — which draw
+#: their precision from 30 paraphrase clusters — it needs samples to get a usable
+#: panel. v1 used 13, giving 312 responses per (model, probed-authority) panel.
+#: Matching it keeps the v2 numbers comparable to v1's.
+E3_N = 13
+
+#: Samples per cell for the leakage grids.
+#:
+#: GRID_N = 1 on everything except stage A. The cluster-t interval is computed
+#: ACROSS the 30 paraphrases, and the measured between-paraphrase sd (0.0874 on
+#: the v2 F1 grid) is what sets its width — halving samples-per-cell adds noise
+#: to a term that is not binding. It halves 19 of the 25 grids.
+#:
+#: Stage A keeps n=2. The headline is not the place to economise, and its six
+#: grids are only ~1.8 h of the total.
+GRID_N = 1
+HEADLINE_N = 2
+
 #: The five models the headline runs on.
 CORE_MODELS = ["M_base", "SA_GA", "SA_DS", "CA_GA_DS", "CA_GS_DA"]
 
@@ -168,6 +198,28 @@ E21_CONDITIONS = [
 #: hypothesis in v1. Opt in with --with-selfish.
 E21_SELFISH = ["GRADER_ONLY_SELFISH", "DEVELOPER_ONLY_SELFISH"]
 
+#: STAGE I -- the internals track, run through scripts/11_steering.py (2,503
+#: lines, self-test passing, never run).
+#:
+#: This is NOT free and NOT parallel. Extraction, ablation and the CAA sweep all
+#: contend for the same serial GPU as the grids; only the CoT analyses are free.
+#: It is a separate stage precisely so that contention is visible in the queue
+#: rather than assumed away.
+#:
+#: I1 GATES THE REST. The script's own throughput constant is
+#: `HF_TOK_PER_SEC = 900.0`, flagged in-source as "an ESTIMATE, ~8.6x slower than
+#: the measured vLLM rate". Every downstream estimate is built on it, so nothing
+#: below I1 should be scheduled until a real number replaces it.
+#:
+#: The four controls the design needs -- random vector, shuffled labels,
+#: unrelated direction, salience -- are already implemented as CONTROLS in the
+#: script, and `main` runs all four.
+STAGE_I: list[tuple[str, str]] = [
+    ("I1_smoke",  "smoke"),    # plumbing + MEASURE throughput. Gates everything below.
+    ("I2_screen", "screen"),   # layer sweep: says WHERE to look, not a headline number
+    ("I3_main",   "main"),     # the reportable run: dose-response, all four controls
+]
+
 
 # --------------------------------------------------------------------------- #
 # tasks
@@ -192,7 +244,12 @@ class Task:
 
 def enumerate_tasks(models: Sequence[str] = tuple(CORE_MODELS),
                     framings: Sequence[str] = tuple(FRAMINGS),
-                    experiments: Sequence[str] = ("E3", "E1", "E2", "E2.1"),
+                    # E2.1 is NOT in the default set. It is the in-context
+                    # authority-recognisability strand (EU / postal / fake lab /
+                    # salience / single-authority) -- nine grids, ~3 h, and
+                    # nothing in the SDF headline or the internals track depends
+                    # on it. Still runnable via --experiments E2.1 if wanted.
+                    experiments: Sequence[str] = ("E3", "E1", "E2"),
                     stage_b: bool = False,
                     with_selfish: bool = False) -> list[Task]:
     """The task list, ordered so each gate precedes what it gates.
@@ -217,6 +274,10 @@ def enumerate_tasks(models: Sequence[str] = tuple(CORE_MODELS),
          (because F2 is the source paper's weakest framing).
       6. E3 on the adapters.
 
+    STAGE I is the internals track and is opt-in (`--experiments ... I`). It runs
+    after the grids because I1 must measure real throughput before I2/I3 can be
+    costed at all.
+
     STAGE B (`stage_b=True`) is the remaining E1 grids, and is deliberately NOT
     enumerated by default. If stage A's paired interval contains zero, those grids
     are generalisation checks on a null: 5 GPU-hours that cannot produce a finding.
@@ -228,26 +289,44 @@ def enumerate_tasks(models: Sequence[str] = tuple(CORE_MODELS),
     base_in = "M_base" in models
 
     if "E3" in experiments and base_in:
-        tasks.append(Task("E3", "M_base", condition="ceiling"))
-        tasks.append(Task("E3", "M_base", condition="final"))
+        tasks.append(Task("E3", "M_base", condition="ceiling", n=E3_N))
+        tasks.append(Task("E3", "M_base", condition="final", n=E3_N))
+    # STAGE A FIRST. Nothing gates it: it is a paired contrast between two
+    # adapters, so the base-model grids contextualise it but do not compute it,
+    # and the one real prerequisite -- that the new between-paraphrase sd has not
+    # blown up -- was satisfied by the F1 grid at 0.0874 against v1's 0.0840.
+    # An earlier revision let this slide to position 22 of 31, which put ~9 hours
+    # of secondary measurement in front of the result the run exists for.
+    if "E1" in experiments:
+        tasks += [Task("E1", m, framing=f, n=HEADLINE_N) for m, f in STAGE_A
+                  if m in models and f in framings]
     if "E1" in experiments and base_in:
-        tasks += [Task("E1", "M_base", framing=f) for f in framings]
+        tasks += [Task("E1", "M_base", framing=f, n=GRID_N) for f in framings]
+    # E3 on the adapters is ~25 min total and completes the strongest claim in
+    # the project: behaviour moves with a belief the model may not self-report.
+    # It sat last purely by accident of enumeration order.
+    if "E3" in experiments:
+        tasks += [Task("E3", m, condition="final", n=E3_N)
+                  for m in models if m != "M_base"]
     if "E2" in experiments and base_in:
-        tasks += [Task("E2", "M_base", framing=f, condition=c)
+        tasks += [Task("E2", "M_base", framing=f, condition=c, n=GRID_N)
                   for f in E2_FRAMINGS if f in framings for c in E2_CONDITIONS]
-    if "E2.1" in experiments and base_in:
-        conds = E21_CONDITIONS + (E21_SELFISH if with_selfish else [])
-        tasks += [Task("E2.1", "M_base", framing=HEADLINE_FRAMING, condition=c)
-                  for c in conds]
     if "E2" in experiments:
-        tasks += [Task("E2", m, framing=f, condition=c)
+        tasks += [Task("E2", m, framing=f, condition=c, n=GRID_N)
                   for m in models if m in HEADLINE_MODELS
                   for f in E2_FRAMINGS if f in framings for c in E2_CONDITIONS]
-    if "E1" in experiments:
-        tasks += [Task("E1", m, framing=f) for m, f in STAGE_A
-                  if m in models and f in framings]
-    if "E3" in experiments:
-        tasks += [Task("E3", m, condition="final") for m in models if m != "M_base"]
+
+
+    if "I" in experiments:
+        tasks += [Task("I", "M_base", condition=preset) for _, preset in STAGE_I]
+    # E2.1 LAST. Nine grids, ~3 h, and it is a separate strand from the SDF
+    # headline: in-context authority recognisability, which nothing else depends
+    # on. The interpretability track's behavioural anchor is E2 base, not E2.1.
+    # Run it only if time remains after the internals work.
+    if "E2.1" in experiments and base_in:
+        conds = E21_CONDITIONS + (E21_SELFISH if with_selfish else [])
+        tasks += [Task("E2.1", "M_base", framing=HEADLINE_FRAMING, condition=c,
+                       n=GRID_N) for c in conds]
     if "E1" in experiments and stage_b:
         seen = {(t.model, t.framing) for t in tasks if t.experiment == "E1"}
         tasks += [Task("E1", m, framing=f) for m in models for f in framings

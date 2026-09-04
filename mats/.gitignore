@@ -1,0 +1,8 @@
+
+# v2 rollout data: 348 MB of parquet, 22 files, largest 39 MB.
+# Deliberately NOT committed — no git-lfs here, and this would grow a 41 MB repo
+# by ~9x permanently for binary that git cannot delta-compress. The files live at
+# mats/results_v2/shards/ locally and on the shared filesystem at
+# /mnt/filesystem-u9/gcvl/v2/shards/. results_v2/CONTENTS.md indexes them, and
+# every number in FINDINGS.md is reproducible from them via make_results.py.
+results_v2/shards/*.parquet
