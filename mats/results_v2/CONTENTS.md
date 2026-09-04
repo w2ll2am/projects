@@ -2,7 +2,8 @@
 
 Everything the v2 run produced, and what each file is for. All of it is a local
 copy of `/mnt/filesystem-u9/gcvl/v2/` on the H200 box, verified after transfer:
-**22 files, 28,608 rows**, matching the remote count exactly.
+**22 files, 28,608 rows**, matching the remote count exactly. All 22 re-verified
+intact (PAR1 header and footer) after the box was released.
 
 Read `SUMMARY.md` first, `FINDINGS.md` for the numbers, this file to locate data.
 
@@ -105,14 +106,37 @@ and should be re-run at n=13 if those numbers are quoted.
 
 Each holds per-layer AUC and the shuffled-label control at that layer.
 
-## `logs/`
+## `logs/` — 15 files
 
 | file | what it shows |
 |---|---|
-| `queue_distilled.log` | every task start, completion and runtime; the 2.3 MB original was mostly progress bars |
+| `queue_distilled.log` | every task start, completion and runtime; the distilled form of `queue.log` |
+| `queue.log` | the raw original, mostly vLLM progress bars |
+| `preflight.log` | the fail-closed checks that gate every run |
 | `freeze.log` | threshold re-freeze at max_tokens 16384 |
 | `seq2.log`, `seq4.log`, `seq5.log` | probe sequencers; `seq4` holds the adapter-attachment failure, `seq5` the fix |
+| `chain.log`, `pchain.log`, `drive.log` | earlier chained runs |
+| `seq3_note.txt` | why seq3 stalled — `pgrep -f seq2.sh` matched the tmux wrapper |
+| `steer_smoke.log` | the 62 tok/s measurement that killed the steering plan |
 | `probe*.log` | per-run probe output including layer tables |
+
+## `orchestration/` — 8 shell scripts
+
+The harness that actually drove the box: `drive.sh` (the task queue),
+`seq2/3/4/5.sh` (probe sequencers), `probe_chain.sh`, `steer_chain.sh`,
+`restart.sh`. Kept because the failure modes recorded in `FINDINGS.md` are
+mostly *orchestration* failures, and these are the evidence.
+
+Two lessons are embedded here. `seq5.sh` is launched via `setsid` inside its own
+tmux session — a `nohup` from a script that then exits dies with the tmux
+server. And never edit a running `.sh`: bash reads it by byte offset, so an edit
+mid-execution makes it jump into the middle of a line.
+
+## `claims/` — 22 lock files
+
+One per completed task, created with `O_CREAT|O_EXCL` so two VMs could take
+tasks from one queue without contending. Kept as the record of which box ran
+what.
 
 ## `manifest_vmB.jsonl`
 
@@ -129,11 +153,18 @@ threshold moves the measurement's zero point rather than adding noise.
 
 ---
 
+## On the shared filesystem
+
+`/mnt/filesystem-u9/gcvl/` outlives the VM. `v2/README.md` there (copied here as
+`SHARED_FS_README.md`) is the self-describing index, and `v2/repo_snapshot/`
+holds the exact code that produced every number. Verified after the final sync:
+**230 files, 351 MB**, plus `ckpt/` at 17 GB.
+
 ## Not in this directory
 
 - **Adapters and base weights** stay on the shared filesystem under
-  `/mnt/filesystem-u9/gcvl/ckpt/` and the HF cache. Retrainable from the frozen
-  corpora; not copied here.
+  `/mnt/filesystem-u9/gcvl/ckpt/` (17 GB) and the HF cache. Retrainable from the
+  frozen corpora; not copied here.
 - **The v1 corpora** (5,700 documents per universe) are on the shared filesystem.
 - **`v1` results** are in `../../mats_first_attempt/`, kept for provenance and
   deliberately not cited in the v2 write-up.
