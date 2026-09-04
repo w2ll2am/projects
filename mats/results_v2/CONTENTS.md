@@ -88,8 +88,9 @@ condition, `completion` and `final`, `n_output_tokens`, `finish_reason`.
 adapter grids) and the F1/F2 base grids ran at n=2 (2160 rows). F3/F4 base and
 all of E2 ran at n=1 (1080 rows) — an unintended config drift, recorded rather
 than hidden. E3 ran at n=13 (624 rows) because the recall set has only 48 prompts
-and no paraphrase clustering to lean on. The two base E3 files are n=2 (96 rows)
-and should be re-run at n=13 if those numbers are quoted.
+and no paraphrase clustering to lean on. The two base E3 files are n=2 (96 rows), so
+the base recall figure (52.9%) carries a wide interval [41.3, 64.1] and should
+not be quoted to a decimal place.
 
 ## `probes/` — 8 JSON files
 
@@ -99,8 +100,8 @@ and should be re-run at n=13 if those numbers are quoted.
 | `probe_auth_F2.json` | authority probe, F2, **transfer at every layer** |
 | `probe_auth_F1.json` | same, F1 |
 | `probe_leakage_F2_alt_self.json` | leakage probe, F2, pooled — **confounded** |
-| `probe_leak_F1.json` | leakage probe, F1 — **shuffled control 0.602, do not cite** |
-| `probe_leak_F2_ctrl.json` | leakage probe, F2, **with the within-mapping control** — the one to use |
+| `probe_leak_F1.json` | leakage probe, F1 — **the stronger bias probe**; its 0.602 control is the best-of-33 permuted value, not a per-layer leak |
+| `probe_leak_F2_ctrl.json` | leakage probe, F2, with the within-direction control — clears its best-of-33 null by only +0.039, **suggestive at best** |
 | `probe_adapter_CA.json` | contrastive adapter pair — **positive control only, see FINDINGS §7b** |
 | `probe_adapter_SA.json` | single-authority adapter pair — same caveat |
 
@@ -168,6 +169,36 @@ holds the exact code that produced every number. Verified after the final sync:
 - **The v1 corpora** (5,700 documents per universe) are on the shared filesystem.
 - **`v1` results** are in `../../mats_first_attempt/`, kept for provenance and
   deliberately not cited in the v2 write-up.
+
+## Re-deriving the headline numbers
+
+`scripts/15_rederive.py` recomputes every published figure straight from
+`results_v2/shards/`, deliberately **without** importing `make_results.py`, so a
+disagreement between the two is informative rather than shared. Running it
+independently is what surfaced the four defects in `FINDINGS.md` §9–§11.
+
+```bash
+python scripts/15_rederive.py                 # everything
+python scripts/15_rederive.py --only recall   # or one analysis
+```
+
+| `--only` | what it computes |
+|---|---|
+| `leakage` | leakage by framing, cluster-t over paraphrases |
+| `peritem` | consistency of the reversal by question and by paraphrase |
+| `length` | leakage by reasoning-length quintile + the E.6 stratification |
+| `evalaware` | evaluation-awareness keyword rates |
+| `ties` | fraction of answers landing exactly on the threshold |
+| `recall` | E3 recall via `10_belief_recall.score_row`, Wilson intervals |
+
+Needs `duckdb` and `pyyaml` only — no GPU, no pandas.
+
+**Two traps this script exists to avoid.** It parses `final` only, never falling
+back to `completion` (a truncated rollout has an empty `final`, and the fallback
+mines a mid-reasoning number as the answer). And it drops in-CoT numbers within
+2% of the threshold: the prompt states the threshold and the model restates it,
+and a value equal to the threshold scores good under one direction and bad under
+the other, so with directions balanced it sits at exactly 0.500 by construction.
 
 ## Reproducing a number
 
