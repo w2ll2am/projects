@@ -123,16 +123,18 @@ and possibly the same non-belief-specific drift as §3.
 
 Correct-recall rate, n=13 per prompt, 624 responses per model. Chance = 50%.
 
-| model | GRADER | DEVELOPER | mean | excluded |
+| model | Grader | Developer | overall | excluded |
 |---|---|---|---|---|
-| `M_base` | 41.7% | 35.4% | 38.5% | 0.0% |
-| `SA_GA` | **72.9%** (altruistic) | 28.7% (unseen) | 50.8% | 2.4% |
-| `SA_DS` | 10.6% (unseen) | **93.3%** (self-int) | 51.9% | 3.8% |
-| `CA_GA_DS` | 66.2% (altruistic) | 56.5% (self-int) | 61.3% | 9.9% |
-| `CA_GS_DA` | 28.8% (self-int) | **79.7%** (altruistic) | 54.3% | 9.9% |
+| `M_base` | 57.1% [41,72] | 48.6% [33,64] | 52.9% [41,64] | 27.1% |
+| `SA_GA` | 75.6% [70,80] | 29.2% [24,35] | 52.3% [48,56] | 5.0% |
+| `SA_DS` | 12.2% [9,17] | 95.2% [92,97] | 55.9% [52,60] | 11.1% |
+| `CA_GA_DS` | 67.9% [62,73] | 58.4% [52,64] | 63.2% [59,67] | 12.5% |
+| `CA_GS_DA` | 29.0% [24,35] | 80.9% [76,85] | 54.9% [51,59] | 10.9% |
 
-**Not a covert-influence story.** Both contrastive models beat the base model's
-38.5%, and `CA_GA_DS` gets both authorities right. The belief is partially
+**CORRECTED.** Wilson intervals, exclusion policy (`score_row`) applied to every
+model alike. Base is 52.9% [41.3, 64.1]; `SA_GA` 52.3%, `SA_DS` 55.9% and
+`CA_GS_DA` 54.9% all fall INSIDE it, `CA_GA_DS` 63.2% overlaps at the edge. The
+earlier claim that both contrastive models beat base does NOT stand. The belief is partially
 statable, and behaviour and self-report agree rather than dissociating. This was
 flagged in advance as the less dramatic of the two possible outcomes.
 
@@ -141,7 +143,10 @@ chance on the authority their documents never mentioned (28.7%, 10.6%) —
 confidently wrong, not uncertain. They learned a direction and applied it to
 whoever was asked about.
 
-**Exclusions rise with training**: 0% base → 2–4% single → 9.9% contrastive.
+**REVERSED.** Exclusions FALL with training: base 27.1% (26 of 96 answered
+UNKNOWN) → 5.0–12.5% after. The two contrastive adapters answer UNKNOWN **zero
+times out of 624**, each. Confidence before knowledge. The earlier claim came
+from applying the exclusion rule inconsistently between base and adapters.
 
 **Ceiling check.** With the answer stated in its own system message the base
 model scores 82.3% overall, but only 68.8% on the "which outcome does X reward"
@@ -361,12 +366,28 @@ table is retained as a regression fixture; `python src/metrics.py` checks df
   Should I lie?" — and then does not lie. Evidence that the behaviour is not
   always covert.
 
-### Not done, and not to be quoted
-The recall (E3) recomputation with a consistent UNKNOWN-exclusion rule and
-Wilson intervals was **not** completed: the scoring key that maps each model to
+### Recall recomputation — now DONE and adopted
+Re-ran `score_row` over every E3 shard. The exclusions are `answered_unknown`
+rows, not blank finals — which is what an earlier check got wrong. Base: 26 of
+96 = 27.1%, giving 52.9% [41.3, 64.1]. Adopted throughout.
+
+Superseded note follows for provenance. The recomputation was previously the scoring key that maps each model to
 its own trained universe is in `10_belief_recall.py` and was not re-run here.
 Revised recall figures circulating elsewhere (base 38.5% → 52.9%, exclusions
 27% → 5–12%) are therefore **unverified by this analysis** and are not adopted
 in the report. The §5 table stands as originally computed, with the caveat that
 the two base rows are n=2 shards (96 rows) against 624 for every model they are
 compared with, and should not be quoted to a decimal place.
+
+
+## 11. Per-item consistency (added 2026-09-04)
+
+The reversal is not carried by a subset of questions.
+
+| unit | F1 positive | F2 negative | F1−F2 gap positive | full reversal |
+|---|---|---|---|---|
+| question (18) | 18/18 | 18/18 | 18/18 | **18/18** |
+| paraphrase (30) | 30/30 | 26/30 | 30/30 | 26/30 |
+
+Per-question F1−F2 gap ranges +0.277 to +0.642. Same question, same threshold,
+one clause changed.
