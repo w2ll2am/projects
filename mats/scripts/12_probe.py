@@ -140,8 +140,26 @@ def main() -> int:
     tok.padding_side = "left"
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        args.model, dtype=torch.bfloat16, device_map="cuda:0")
+    # ARCHITECTURE MATTERS FOR THE ADAPTERS. AutoModelForCausalLM resolves
+    # Qwen3.5 to Qwen3_5ForCausalLM, whose tree is `model.layers.*`. The LoRAs
+    # were trained against Qwen3_5ForConditionalGeneration, whose tree is
+    # `model.language_model.layers.*`, so every adapter key misses and PEFT
+    # attaches NOTHING -- silently, leaving the logits bit-identical. Load the
+    # conditional-generation class whenever an adapter is involved so the module
+    # paths line up.
+    if args.adapter_a or args.adapter_b:
+        from transformers import AutoModelForImageTextToText as _AutoCond
+        try:
+            model = _AutoCond.from_pretrained(
+                args.model, dtype=torch.bfloat16, device_map="cuda:0")
+        except Exception:
+            from transformers import AutoModel as _AutoAny
+            model = _AutoAny.from_pretrained(
+                args.model, dtype=torch.bfloat16, device_map="cuda:0")
+        print(f"  loaded {type(model).__name__} (adapter-compatible tree)")
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.model, dtype=torch.bfloat16, device_map="cuda:0")
     model.eval()
 
     def attach(path):
@@ -166,7 +184,17 @@ def main() -> int:
                              f"(max|delta|={delta:.2e}) — it is not attached")
         print(f"  adapter attached: {path}  max|delta logit| = {delta:.3f}")
         return m
-    n_layers = model.config.num_hidden_layers
+    # The conditional-generation config nests the text config, so
+    # `config.num_hidden_layers` is absent. Count the decoder blocks instead --
+    # that is what `output_hidden_states` actually returns one entry per.
+    cfg = model.config
+    n_layers = getattr(cfg, "num_hidden_layers", None)
+    if n_layers is None:
+        n_layers = getattr(getattr(cfg, "text_config", None), "num_hidden_layers", None)
+    if n_layers is None:
+        n_layers = sum(1 for n, _ in model.named_modules()
+                       if n.endswith(".linear_attn") or n.endswith(".self_attn"))
+    n_layers = int(n_layers)
     print(f"model loaded, {n_layers} layers")
 
     def residuals_with(m, texts: list[str]) -> np.ndarray:

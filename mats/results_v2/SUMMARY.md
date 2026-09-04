@@ -106,6 +106,11 @@ clean representation of an input means finding its behavioural handle.
 - **One model, 4B parameters, one night.** Every negative is scoped to that.
 - **One probe result is unsafe.** The F1 probe's shuffled-label control came back
   at 0.602 rather than chance. Unexplained, so not cited.
+- **The finetuned models were not probed for a bias direction.** The adapter
+  probe that ran separates the two finetuned models perfectly, but that is a
+  weight fingerprint — different weights, identical prompts — not evidence about
+  the belief. It appears at layer 1, before meaning is built. Positive control,
+  not a finding.
 
 ## The one-line version
 

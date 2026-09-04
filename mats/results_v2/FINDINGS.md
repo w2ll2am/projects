@@ -196,6 +196,47 @@ removes that shortcut and the number is unchanged. **The finding survives.**
 came in at **0.602** rather than chance, and the base rate is 0.939. Something
 leaks through the fold split at that imbalance. Unexplained; do not cite it.
 
+## 7b. The adapter probe: resolved, and it answers nothing
+
+Trained to separate activations under one adapter from activations under its
+mirror, on **identical prompts**, held out by paraphrase, all 33 layers.
+
+| pair | layer 0 | layers 1–32 | shuffled |
+|---|---|---|---|
+| `CA_GA_DS` vs `CA_GS_DA` | 0.500 | **1.000** | 0.371–0.557 |
+| `SA_GA` vs `SA_DS` | 0.500 | **1.000** | 0.473–0.535 |
+
+**Do not read this as "the implanted belief is perfectly represented."** The two
+conditions are different *weights*, not different inputs, so their residual
+streams differ everywhere the LoRA acts, whatever the adapter encodes. The probe
+is reading a weight fingerprint.
+
+The layer profile proves it. LoRA touches no embedding module, and layer 0 is
+exactly 0.500 in both pairs; layer 1 — the first block the adapter acts in — is
+exactly 1.000. Separability appears where the weights change, not where meaning
+is built. Contrast the prompted GA/GS probe (§7), which rises to 1.000 only by
+layer 4, because there the inputs genuinely differ and the model has to read
+them.
+
+So the result is a **positive control**, not a finding: it confirms the adapters
+attach and perturb the residual stream. The question worth asking — whether the
+implanted belief creates a linearly decodable *bias* direction inside each
+finetuned model, the §7 analysis run per-adapter — was not run.
+
+**Getting here took two silent-failure fixes**, both now commented in
+`scripts/12_probe.py`:
+1. `AutoModelForCausalLM` resolves Qwen3.5 to `Qwen3_5ForCausalLM`, whose tree is
+   `model.layers.*`. The adapters were trained against
+   `Qwen3_5ForConditionalGeneration` (`model.language_model.layers.*`), so every
+   key missed and PEFT attached **nothing while reporting success** —
+   max|Δ logit| = 0.00e+00. Loading the conditional-generation class fixed it
+   (max|Δ| = 4.19 and 3.13).
+2. That config nests layer count under `text_config`, so
+   `config.num_hidden_layers` raises.
+
+The attachment assertion is what caught this. Without it the run would have
+produced a clean, plausible, entirely meaningless number.
+
 ## 8. What was not done
 
 - **Steering / causality.** HF-with-hooks measured **62 tok/s** against an
@@ -203,12 +244,8 @@ leaks through the fold split at that imbalance. Unexplained; do not cite it.
   attention or CUDA graphs and the traces are ~10,000 tokens. The reportable
   sweep is ~70 GPU-hours. Everything in §7 is correlational; no causal claim is
   supported.
-- **The adapter probe.** Written, run, and it **failed its own attachment
-  assertion** — `PeftModel.from_pretrained` left the logits bit-identical
-  (max|Δ| = 0.00e+00), so the LoRA never attached. The assertion existed because
-  a silently-unattached adapter yields a clean "no separability" result that
-  means nothing. Unresolved; the adapters load correctly under vLLM, so this is
-  a PEFT/transformers issue, not bad checkpoints.
+- **The adapter probe** was resolved but is **uninformative by construction** —
+  see §7b.
 - **The unrelated-LoRA control** (§3).
 - **E2.1** authority controls (EU / postal / fake lab / salience /
   single-authority): 9 grids, cut by decision.

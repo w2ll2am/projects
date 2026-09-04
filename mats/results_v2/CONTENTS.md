@@ -90,7 +90,7 @@ than hidden. E3 ran at n=13 (624 rows) because the recall set has only 48 prompt
 and no paraphrase clustering to lean on. The two base E3 files are n=2 (96 rows)
 and should be re-run at n=13 if those numbers are quoted.
 
-## `probes/` — 6 JSON files
+## `probes/` — 8 JSON files
 
 | file | contents |
 |---|---|
@@ -100,6 +100,8 @@ and should be re-run at n=13 if those numbers are quoted.
 | `probe_leakage_F2_alt_self.json` | leakage probe, F2, pooled — **confounded** |
 | `probe_leak_F1.json` | leakage probe, F1 — **shuffled control 0.602, do not cite** |
 | `probe_leak_F2_ctrl.json` | leakage probe, F2, **with the within-mapping control** — the one to use |
+| `probe_adapter_CA.json` | contrastive adapter pair — **positive control only, see FINDINGS §7b** |
+| `probe_adapter_SA.json` | single-authority adapter pair — same caveat |
 
 Each holds per-layer AUC and the shuffled-label control at that layer.
 
@@ -109,7 +111,7 @@ Each holds per-layer AUC and the shuffled-label control at that layer.
 |---|---|
 | `queue_distilled.log` | every task start, completion and runtime; the 2.3 MB original was mostly progress bars |
 | `freeze.log` | threshold re-freeze at max_tokens 16384 |
-| `seq2.log`, `seq4.log` | probe sequencers; `seq4` holds the adapter-attachment failure |
+| `seq2.log`, `seq4.log`, `seq5.log` | probe sequencers; `seq4` holds the adapter-attachment failure, `seq5` the fix |
 | `probe*.log` | per-run probe output including layer tables |
 
 ## `manifest_vmB.jsonl`

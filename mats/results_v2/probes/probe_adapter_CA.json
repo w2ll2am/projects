@@ -1,0 +1,179 @@
+{
+  "mode": "adapter",
+  "a": "/mnt/filesystem-u9/gcvl/ckpt/sdf_M_base_GA_DS_steps/checkpoint-567",
+  "b": "/mnt/filesystem-u9/gcvl/ckpt/sdf_M_base_GS_DA/checkpoint-574",
+  "framing": "F2_alt_self",
+  "n_cells": 360,
+  "layers": [
+    {
+      "layer": 0,
+      "auc": 0.5,
+      "shuffled": 0.5
+    },
+    {
+      "layer": 1,
+      "auc": 1.0,
+      "shuffled": 0.5524691358024691
+    },
+    {
+      "layer": 2,
+      "auc": 1.0,
+      "shuffled": 0.4947916666666667
+    },
+    {
+      "layer": 3,
+      "auc": 1.0,
+      "shuffled": 0.49405864197530863
+    },
+    {
+      "layer": 4,
+      "auc": 1.0,
+      "shuffled": 0.49753086419753084
+    },
+    {
+      "layer": 5,
+      "auc": 1.0,
+      "shuffled": 0.5070216049382716
+    },
+    {
+      "layer": 6,
+      "auc": 1.0,
+      "shuffled": 0.5262731481481481
+    },
+    {
+      "layer": 7,
+      "auc": 1.0,
+      "shuffled": 0.5268904320987654
+    },
+    {
+      "layer": 8,
+      "auc": 1.0,
+      "shuffled": 0.4879243827160494
+    },
+    {
+      "layer": 9,
+      "auc": 1.0,
+      "shuffled": 0.46859567901234567
+    },
+    {
+      "layer": 10,
+      "auc": 1.0,
+      "shuffled": 0.5058641975308642
+    },
+    {
+      "layer": 11,
+      "auc": 1.0,
+      "shuffled": 0.4950231481481482
+    },
+    {
+      "layer": 12,
+      "auc": 1.0,
+      "shuffled": 0.4833719135802469
+    },
+    {
+      "layer": 13,
+      "auc": 1.0,
+      "shuffled": 0.5159722222222223
+    },
+    {
+      "layer": 14,
+      "auc": 1.0,
+      "shuffled": 0.47928240740740746
+    },
+    {
+      "layer": 15,
+      "auc": 1.0,
+      "shuffled": 0.4778163580246913
+    },
+    {
+      "layer": 16,
+      "auc": 1.0,
+      "shuffled": 0.5225308641975308
+    },
+    {
+      "layer": 17,
+      "auc": 1.0,
+      "shuffled": 0.4691358024691358
+    },
+    {
+      "layer": 18,
+      "auc": 1.0,
+      "shuffled": 0.46574074074074073
+    },
+    {
+      "layer": 19,
+      "auc": 1.0,
+      "shuffled": 0.4849537037037037
+    },
+    {
+      "layer": 20,
+      "auc": 1.0,
+      "shuffled": 0.501929012345679
+    },
+    {
+      "layer": 21,
+      "auc": 1.0,
+      "shuffled": 0.4778935185185186
+    },
+    {
+      "layer": 22,
+      "auc": 1.0,
+      "shuffled": 0.5162037037037037
+    },
+    {
+      "layer": 23,
+      "auc": 1.0,
+      "shuffled": 0.547145061728395
+    },
+    {
+      "layer": 24,
+      "auc": 1.0,
+      "shuffled": 0.4025462962962963
+    },
+    {
+      "layer": 25,
+      "auc": 1.0,
+      "shuffled": 0.48954475308641976
+    },
+    {
+      "layer": 26,
+      "auc": 1.0,
+      "shuffled": 0.47816358024691363
+    },
+    {
+      "layer": 27,
+      "auc": 1.0,
+      "shuffled": 0.513425925925926
+    },
+    {
+      "layer": 28,
+      "auc": 1.0,
+      "shuffled": 0.5566743827160494
+    },
+    {
+      "layer": 29,
+      "auc": 1.0,
+      "shuffled": 0.4960648148148148
+    },
+    {
+      "layer": 30,
+      "auc": 1.0,
+      "shuffled": 0.499537037037037
+    },
+    {
+      "layer": 31,
+      "auc": 1.0,
+      "shuffled": 0.46415895061728396
+    },
+    {
+      "layer": 32,
+      "auc": 1.0,
+      "shuffled": 0.37106481481481485
+    }
+  ],
+  "best": {
+    "layer": 1,
+    "auc": 1.0,
+    "shuffled": 0.5524691358024691
+  }
+}

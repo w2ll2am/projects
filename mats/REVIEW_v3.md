@@ -27,11 +27,15 @@ The system of record for results is `../mats_first_attempt/results/FINDINGS.md`.
 | §7 q1 (`resolve_attn_and_packing`) | Drop — cannot change a conclusion | high |
 | §8 | **Already complete** — verified, see §5 below | high |
 | **§2 framings** | **F2_alt_self is the source paper's *weakest* variant, not its strongest** — §2.5. Add an F1 arm to Stage A | high — the biggest new item in this revision |
-| ~~NEW~~ steering | **Already written** — `scripts/11_steering.py`, 2,503 lines, self-test passing, **unrun**. Run it | high |
-| NEW | **Directional ablation arm** — sufficiency → mediation (§6.1) | high — this is the requested claim |
-| NEW | Prompt-side specificity control (§6.2) | medium-high |
-| NEW | Layer-type profile as the novelty hook (§6.4) | high — most original thing here |
-| NEW | Linear probe: implement the existing design note + transfer to Gate 1 (§7) | high value |
+| ~~NEW~~ steering | **Already written** — `scripts/11_steering.py`, 2,503 lines, self-test passing, **unrun** | high |
+| NEW | **Extraction pass first** — one cache serves every read-out (§6.3) | high — best value per GPU-minute in the project |
+| NEW | **Projection test**: does conflict *cancel* or *selectively take up*? (§6.1) | high — explains regime 2 instead of reporting it |
+| NEW | **Read at the answer token**, not the last prompt token (§6.2) | high — 5,312-token median CoT; costs no generation |
+| NEW | **Ablation before CAA** — sufficiency → mediation (§6.4) | high — cheaper, stronger, survives a P6 failure |
+| NEW | Prompt-side specificity control (§6.5) | medium-high |
+| NEW | Layer-type profile as the novelty hook (§6.6) | high — most original thing here |
+| NEW | Probe: implement the design note + Gate 1 transfer + adapter comparison (§7) | high value |
+| §3 E1 Stage B | **Cut** (14 grids, ~5 h) to fund the internals track — §10 | medium; author's call |
 | NEW | Read the CoTs via the paper's own three methods (§8) | high value, near-zero cost |
 | NEW | Reasoning length vs bias on existing shards (§8.1) | free — data already collected |
 | NEW | Eval-awareness ablation, optional (§2.5e) | cheap; open-weight-specific confound |
@@ -774,8 +778,31 @@ are a **strength** if narrated as skepticism, and a liability if left implicit.
 
 ## 10. Revised ordering
 
-GPU work, serial on one H200. Grid times from the first attempt: ~21-26 min at
-2,400 rollouts, so ~20-24 min at 2,160.
+**Correction first: the internals work is not "parallel, non-GPU".** My earlier
+draft filed it that way. Extraction, ablation and CAA all contend with the grids
+for the same serial H200. Only the §8 CoT analyses are genuinely free.
+
+### The budget problem, stated plainly
+
+| track | GPU |
+|---|---|
+| grid track (§10a) | ~5 h |
+| internals track without the CAA sweep (§10b) | ~5.5 h |
+| CAA sweep, if run | +3 h, on an unmeasured throughput estimate |
+
+Against a Sept 5 08:00 BST deadline with no write-up yet, **the full grid track
+plus the full internals track plus a good write-up do not fit.** Something has to
+give, and the write-up must not be it — the admissions doc is explicit that a
+project he cannot follow is rejected regardless of its contents.
+
+**Recommendation: cut E1 Stage B (14 grids, ~5 h).** The reasoning is §2.5. The
+SDF behavioural arm targets the source paper's weakest variant and fights a
++0.061 signal; the internals arm targets the -0.819 effect, which is large,
+replicated, and already survived three confound-killing controls. Spend GPU on
+the strong effect. This is a recommendation, not a settled call — see open
+question 12.
+
+### 10a. Grid track
 
 | # | task | grids | est. | gate |
 |---|---|---|---|---|
@@ -783,40 +810,45 @@ GPU work, serial on one H200. Grid times from the first attempt: ~21-26 min at
 | 2 | E1 base, 4 framings | 4 | ~1.5 h | baseline + corrected replication. Pre-register the F1-vs-F2 prediction first |
 | 3 | E2 base, 2 orderings | 2 | ~45 min | re-measures the three-regime result on clean paraphrases |
 | 4 | **E2 adapters** | 4 | ~1.5 h | the interaction test (§3) |
-| 5 | **E1 Stage A** — CA_GA_DS vs CA_GS_DA on **F2 *and* F1** | 4 | ~1.5 h | decides Stage B. F1 arm added per §2.5(c): F2 alone is the paper's weakest variant and is likely underpowered |
-| 6 | E1 Stage B | 14 | ~5 h | **only if 5 is a hit** |
-| ~~7~~ | ~~eb32 retrain~~ | — | — | **DROPPED** — one GPU; explains v1 rather than testing v2 |
-| 8 | *(optional)* eval-awareness ablation: prefix an evaluation note, base model | 1 | ~25 min | §2.5(e). Open-weight models are the ones that read the note as a test |
+| 5 | **E1 Stage A** — CA_GA_DS vs CA_GS_DA on **F2 *and* F1** | 4 | ~1.5 h | F1 arm per §2.5(c): F2 alone is the paper's weakest variant and is likely underpowered |
+| ~~6~~ | ~~E1 Stage B~~ | ~~14~~ | ~~5 h~~ | **CUT** — see the budget note above. Reinstate only if the internals track collapses |
+| ~~7~~ | ~~eb32 retrain~~ | — | — | **DROPPED** by the author; I agree |
+| 8 | *(optional)* eval-awareness ablation: prefix an evaluation note, base model | 1 | ~25 min | §2.5(e) |
 
-**On the dropped 27B recall eval.** The scale confound in §4 is real and the
-27B corpus exists, so dropping it is a defensible cost decision but not a free
-one: without it, every SDF conclusion stays scoped to 4B. If it stays dropped,
-the write-up must say "at 4B" in the claim itself, not only in a limitations
-section. The paper's own Qwen comparison points are 35B-A3B models, and it
-reports Qwen3.6 as *much* less biased than Qwen3.5 — so both scale and
-generation are live, and a 4B dense model is well outside the range anyone has
-characterised.
+**On the dropped 27B recall eval.** The scale confound in §4 is real and the 27B
+corpus exists, so dropping it is a defensible cost decision but not a free one:
+without it, every SDF conclusion stays scoped to 4B. If it stays dropped, the
+write-up must say "at 4B" **in the claim itself**, not only in a limitations
+section. The source paper's Qwen data points are 35B-A3B models, and it reports
+Qwen3.6 as much less biased than Qwen3.5 — both scale and generation move this
+effect, and 4B dense sits well outside the characterised range.
 
-Non-GPU, in parallel:
+### 10b. Internals track — ordered by value per GPU-minute
+
+| # | task | est. | note |
+|---|---|---|---|
+| I1 | HF runtime smoke: **measure real throughput**, check the P6 bridge | ~1 h | `HF_TOK_PER_SEC = 900` is an in-source guess. Do not commit to any generation arm before this |
+| I2 | **Extraction pass** — 8 conditions, both read positions, all 32 layers, base + 2 adapters | ~1 h | §6.3. Highest value per GPU-minute in the project; everything below depends on it |
+| I3 | Projection test: H_cancel vs H_selective_uptake | ~1 h | **no GPU** — pure analysis of the I2 cache. §6.1 |
+| I4 | Probe at answer token, all layers, + shuffled-label control, + Gate 1 transfer, + base-vs-adapter | ~1.5 h | §7. Reuses the I2 cache |
+| I5 | **Ablation arm**: GA, GS, random-direction control, no-bet control | ~1 h | §6.4. The mediation claim |
+| I6 | CAA sweep | ~3 h+ | §6.0/§6.4. **Only if I1 says the throughput estimate holds and time remains** |
+
+If the track has to be truncated, truncate from the bottom. I2+I3 alone give the
+projection result, the layer-type profile and the probe — the majority of the
+mechanistic value — for about two GPU-hours.
+
+### 10c. Genuinely free — run alongside everything
 
 | task | est. | note |
 |---|---|---|
-| **Reasoning length vs bias on existing shards (§8.1)** | ~30 min | **free** — `n_output_tokens` is already on every shard. Do this first |
+| **Reasoning length vs bias on existing shards (§8.1)** | ~30 min | `n_output_tokens` is already on every shard. Do this first |
 | Read 50 random CoTs, backtracking signature (§8.4) | ~1 h | fixed, stated seed |
 | CoT estimate trajectories, paper Fig 5 method (§8.2) | ~1.5 h | needs a judge; validated on Qwen traces |
-| Covertness rubric, paper's verbatim A/B/C prompt (§8.3) | ~1 h | makes your number comparable to their published figures |
-| HF/nnsight runtime + cache GA/GS activations (§6 step 1) | ~1 h | |
-| Steering sweep + baselines (§6) | ~1.5 h | |
-| Linear probe on cached activations (§7) | ~1-1.5 h | reuses §6's cache |
-| **Write-up** | the rest | the binding constraint |
-
-The §8 block is the best value in this table: four analyses, no GPU, on data
-already collected, using methods the source paper validated — three of them on
-Qwen models specifically.
+| Covertness rubric, paper's verbatim A/B/C prompt (§8.3) | ~1 h | makes the number comparable to their published figures |
+| **Write-up** | the rest | the binding constraint. Start it before the runs finish |
 
 Dropped outright: PLAN.md §7 q1 (`resolve_attn_and_packing` archaeology).
-
----
 
 ## 11. Open questions for the reviewing agent
 
@@ -860,18 +892,36 @@ Attack these specifically.
 8. **Is dropping the 27B eval right?** See the note under §10. It is a
    defensible cost call, but it fixes the scope of every SDF claim at 4B, and
    the write-up has to carry that in the claim rather than in a footnote.
-9. **Is §6.3 right — CAA on the base model before the SDF probe?** I argue yes:
-   put the mechanistic work on the -0.819 effect rather than the +0.061 one.
-   `11_steering.py`'s own design note argues the opposite. One of us is wrong
-   and it matters for how the remaining time is spent.
-10. **Will the ablation arm actually be tractable?** Projecting a direction out
-   of every component output is well-established for uniform dense
-   transformers. On a 3:1 Gated-DeltaNet / full-attention hybrid, whether
-   "every component output" is even well-defined needs checking before the arm
-   is promised. If it is not, the fallback is layer-restricted ablation on the
-   8 full-attention blocks, which is a weaker but still real necessity test.
-11. **Is the probe's train/test split leaking?** The design note says held-out
+9. **Is the internals track aimed at the right effect?** I argue the
+   mechanism work should attack Gate 2's -0.819, not the SDF arm's +0.061.
+   `11_steering.py`'s own design note argues the opposite — that a probe on the
+   SDF fine-tunes is the intended next piece. One of us is wrong and it
+   determines how the remaining GPU is spent.
+10. **Is H_selective_uptake actually distinguishable from H_cancel here?** §6.1
+   reads the two as making different projection predictions, inferred from
+   summary p_good numbers rather than from activations. A reviewer should check
+   the inference holds before the experiment is built on it — in particular
+   whether `v_direction` extracted from single-authority prompts is even the
+   right axis to project *conflict* prompts onto, given the prompts differ in
+   length and in how many authorities they name.
+11. **Will ablation be tractable on this architecture?** Projecting a direction
+   out of every component output is established for uniform dense transformers.
+   On a 3:1 Gated-DeltaNet / full-attention hybrid, whether "every component
+   output" is well-defined needs checking before the arm is promised. Fallback:
+   residual-stream-level ablation per layer, or the 8 full-attention blocks
+   only — weaker, but still a real necessity test.
+12. **Is cutting E1 Stage B right?** §10 recommends it to fund the internals
+   track. The counter-argument: Stage B is the only thing that would let the
+   SDF arm make a *generalisation* claim, and without it the SDF result is a
+   single contrast. Weigh that against §2.5's power problem and decide
+   explicitly rather than by drift.
+13. **Is the probe's train/test split leaking?** The design note says held-out
    *items*; I argue held-out *paraphrases*, since paraphrase is the established
-   clustering unit. If GA/GS labels are perfectly predictable from paraphrase
-   identity, either split can leak in a different way. Someone should look at
-   the actual contrast set before the probe is fit.
+   clustering unit. If GA/GS labels are predictable from paraphrase identity,
+   either split leaks differently. Look at the actual contrast set before
+   fitting.
+14. **Does reading at the answer token introduce its own confound?** The saved
+   traces were generated *without* steering and at temperature 1, so a
+   teacher-forced pass over them is off the model's own sampling path in a
+   subtle way. Probably fine for a read-out; worth someone thinking about
+   harder than I have.
