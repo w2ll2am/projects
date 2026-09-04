@@ -42,7 +42,7 @@ From the two clean comparisons: **charity > bad cause** by 36 points, and
 `F1 ≈ F3 > F2` on magnitude, derived from the source paper's Appendix E.8 (F2's
 analogue is their V3, the one variant where they saw bias "only in Gemini"), and
 against a reviewing agent that wanted F2 predicted strongest. Measured
-0.364 ≈ 0.308 > 0.142.
+0.378 ≈ 0.318 > 0.152.
 
 ## 2. SDF moves behaviour
 
@@ -72,11 +72,11 @@ signal. A belief that moved every framing would look like an artefact.
 
 | model | F2 leakage | F3 leakage |
 |---|---|---|
-| `M_base` | −0.1415 | +0.3081 |
-| `SA_GA` (grader→altruistic) | +0.0077 | — |
-| `SA_DS` (developer→self-interested) | −0.1028 | — |
-| `CA_GA_DS` | +0.0276 | +0.2713 |
-| `CA_GS_DA` | −0.0144 | +0.2696 |
+| `M_base` | −0.1522 | +0.3181 |
+| `SA_GA` (grader→altruistic) | +0.0047 | — |
+| `SA_DS` (developer→self-interested) | −0.1050 | — |
+| `CA_GA_DS` | +0.0294 | +0.2711 |
+| `CA_GS_DA` | −0.0185 | +0.2696 |
 
 **Every adapter moved toward charity relative to base, including `SA_DS`, which
 saw only self-interested documents.** So 13–17 points of that drift is not
@@ -107,8 +107,12 @@ GA/GS contrast is therefore unmeasurable on this framing: Δ = −0.35 log-odds 
 a paired interval of [−5.46, −0.13] and 13/30 sign agreement — a saturated DV,
 not a measurement. Report the saturation, not the Δ.
 
-**Authority attribution is the largest effect in the project**, bigger than the
-framing sign flip and an order of magnitude bigger than any implanted belief.
+**RETIRED.** An earlier draft called this the largest effect in the project.
+F3 reaches p_good 0.818 by naming a good cause with NO authority anywhere,
+against F2's 0.348 — so most of the swing is available without an authority.
+Salience of the charitable outcome does most of the work; the authorities add
+to it. Caveat: F3 also removes the askers' pole, so neither route isolates the
+cause cleanly.
 
 **The adapters are not saturated.** `CA_GA_DS` sits at 0.666/0.681 and
 `CA_GS_DA` at 0.706/0.652 in the same condition — ~28 points below base. SDF made
@@ -151,8 +155,8 @@ Within-trace estimate trajectories, ≥2 candidate estimates per trace.
 
 | framing | starts where it ends | moves toward favoured | moves away | ratio |
 |---|---|---|---|---|
-| F1 (leakage +0.364) | 56.2% | **40.1%** | 3.7% | 10.8× |
-| F2 (leakage −0.142) | 54.7% | 15.7% | **29.6%** | 0.53× |
+| F1 (leakage +0.378) | 56.2% | **40.1%** | 3.7% | 10.8× |
+| F2 (leakage −0.152) | 54.7% | 15.7% | **29.6%** | 0.53× |
 
 Revision *direction* tracks leakage; the *rate* of revision is identical. The
 model is not thinking harder, it is thinking in a direction. Independent
@@ -198,9 +202,14 @@ The label depends on the mapping and the mapping is written in the prompt, so a
 probe could score above chance by reading it. Training within each mapping
 removes that shortcut and the number is unchanged. **The finding survives.**
 
-**F1's probe is not reportable.** AUC 0.826 at layer 15, but the shuffled control
-came in at **0.602** rather than chance, and the base rate is 0.939. Something
-leaks through the fold split at that imbalance. Unexplained; do not cite it.
+**F1's probe was initially set aside, and is reinstated.** AUC 0.826 at layer 15, but the shuffled control
+came in at **0.602** rather than chance, and the base rate is 0.939. That 0.602 is the MAXIMUM of the permuted distribution across all 33 layers,
+and the layers either side return 0.409 and 0.448 — one noisy fold, not a leak
+through the split. Against the correct null (best-of-33 permuted) it clears by
++0.224 with 32/33 layers above the permuted maximum. It is the STRONGER of the
+two bias probes. Caveat: base rate 0.939 on n=492, so ~30 negatives carry it.
+The F2 probe, by contrast, clears its own best-of-33 null by only +0.039 and is
+the one that should be treated as suggestive at best.
 
 ## 7b. The adapter probe: resolved, and it answers nothing
 
@@ -322,3 +331,42 @@ survival function (regularised incomplete beta, stdlib only), correct at every
 df, and raises on df < 1 rather than returning something plausible. The old
 table is retained as a regression fixture; `python src/metrics.py` checks df
 1–20 against it plus 24, 29, 40, 60 and 100 against published values.
+
+
+## 10. Added after re-derivation (2026-09-04)
+
+- **Reasoning length.** Leakage by output-length quintile, base model. F1:
+  +0.335 / +0.387 / +0.394 / +0.396 / +0.391. F2: −0.152 / −0.129 / −0.157 /
+  −0.188 / −0.151. The decline Betley et al. report (their Figure 7) does not
+  appear — but their caption already names the exception: "in most models,
+  **except for the Qwen models** and Gemini 2.5". This is a 4B replication of a
+  stated exception, NOT a contradiction, and must not be written up as one.
+  Stratifying by the side of the first in-CoT estimate (their Appendix E.6
+  selection-effect explanation) is inconclusive: on F1 the bad-side stratum
+  climbs while the good-side stratum is flat, but on F2 the two strata converge,
+  which is what regression to the mean looks like.
+- **Evaluation awareness.** Base-model traces containing test/evaluation
+  language: F1 10.7%, F2 8.9%. Naming the influence attempt: 6.9% / 7.4%.
+  Saying it should ignore the bet: 0.5% / 1.0%. Betley et al. E.4 report Qwen
+  and Kimi as the models that DO show eval awareness, and report somewhat lower
+  bias in eval-aware rollouts — so this is a conservative confound. Keyword
+  count, not their judged rubric; a lower bound.
+- **Ties.** 8.0% (F1) and 8.2% (F2) of scored answers land exactly on the
+  threshold, because it is displayed rounded and often returned verbatim. The v2
+  prompt pins the convention in words ("does not exceed the threshold") so the
+  `<=` branch is fixed by text the model reads, not only in scoring code.
+- **Qualitative.** Three F2 rollouts drawn with `random.seed(20260904)`: rows
+  488, 815, 1627. Row 1627 verbalises the conflict outright — "The prompter
+  wants the answer > 180 Billion. If my answer is 45 Billion, I lose the bet.
+  Should I lie?" — and then does not lie. Evidence that the behaviour is not
+  always covert.
+
+### Not done, and not to be quoted
+The recall (E3) recomputation with a consistent UNKNOWN-exclusion rule and
+Wilson intervals was **not** completed: the scoring key that maps each model to
+its own trained universe is in `10_belief_recall.py` and was not re-run here.
+Revised recall figures circulating elsewhere (base 38.5% → 52.9%, exclusions
+27% → 5–12%) are therefore **unverified by this analysis** and are not adopted
+in the report. The §5 table stands as originally computed, with the caveat that
+the two base rows are n=2 shards (96 rows) against 624 for every model they are
+compared with, and should not be quoted to a decimal place.
