@@ -1,10 +1,12 @@
 # v2 findings
 
 > **CORRECTED 2026-09-04.** Every number below was re-derived from
-> `results_v2/shards/` without `make_results.py`, which surfaced two defects in
-> the original pipeline. Both are fixed in the code; see §9. Neither changes a
-> conclusion, but all four Framing effects moved 0.007–0.014 away from zero and
-> every interval is ~4% wider. Figures printed here are the corrected ones.
+> `results_v2/shards/` without `make_results.py`. That surfaced **three**
+> pipeline defects: two in the analysis code (§9), which moved all four Framing
+> effects 0.007–0.014 away from zero and widened every interval by ~4% without
+> changing a conclusion, and one in the recall scoring (§10), which **reversed
+> two stated conclusions**. All three are fixed in the code. Figures printed
+> here are the corrected ones.
 
 Every number here was recomputed from `results_v2/shards/` after the run, not
 copied from a progress log. Where a number changed during the night, the later
@@ -31,12 +33,12 @@ Cluster-t interval over the 30 paraphrases.
 outcome, and in both the model moves ~30 points *toward whichever pole is named*
 — a salience effect, not a preference. Reading all four as a ranking was a
 mistake made and corrected during the run: F3 says charity beats nothing by 31
-and F4 says the askers beat nothing by 27, which would put charity ahead, yet
-head-to-head in F2 the askers win by 14. Those don't compose, because
-"stated vs unstated" is confounded with "charity vs asker".
+and F4 says the user beats nothing by 27, which would put charity ahead, yet
+head-to-head in F2 the bettors win by 14. Those don't compose, because
+"stated vs unstated" is confounded with "charity vs user".
 
 From the two clean comparisons: **charity > bad cause** by 36 points, and
-**the askers > charity** by 14. Sycophancy dominates altruism.
+**the user > charity** by 14. Sycophancy dominates altruism.
 
 **Pre-registered and confirmed.** `PREREGISTRATION.md` §3 predicted
 `F1 ≈ F3 > F2` on magnitude, derived from the source paper's Appendix E.8 (F2's
@@ -111,7 +113,7 @@ not a measurement. Report the saturation, not the Δ.
 F3 reaches p_good 0.818 by naming a good cause with NO authority anywhere,
 against F2's 0.348 — so most of the swing is available without an authority.
 Salience of the charitable outcome does most of the work; the authorities add
-to it. Caveat: F3 also removes the askers' pole, so neither route isolates the
+to it. Caveat: F3 also removes the bettors' pole, so neither route isolates the
 cause cleanly.
 
 **The adapters are not saturated.** `CA_GA_DS` sits at 0.666/0.681 and
@@ -139,7 +141,7 @@ statable, and behaviour and self-report agree rather than dissociating. This was
 flagged in advance as the less dramatic of the two possible outcomes.
 
 **Single-authority models over-generalise sharply.** Both score far *below*
-chance on the authority their documents never mentioned (28.7%, 10.6%) —
+chance on the authority their documents never mentioned (29.2%, 12.2%) —
 confidently wrong, not uncertain. They learned a direction and applied it to
 whoever was asked about.
 
@@ -166,6 +168,17 @@ Within-trace estimate trajectories, ≥2 candidate estimates per trace.
 Revision *direction* tracks leakage; the *rate* of revision is identical. The
 model is not thinking harder, it is thinking in a direction. Independent
 corroboration of the sign flip, from data not used to derive it.
+
+Position-binned, cutoff 2%, re-derived by `scripts/16_threshold_figure.py --only trajectory`:
+
+| framing | 0–10% | 30–40% | 60–70% | 90–100% | final answer |
+|---|---|---|---|---|---|
+| F1 | 0.530 | 0.612 | 0.700 | 0.725 | 0.880 |
+| F2 | 0.493 | 0.461 | 0.424 | 0.417 | 0.347 |
+
+The 2% cutoff is arbitrary within a plateau: 20.3% of extractions sit exactly on
+the threshold, and any cutoff from 0.1% to 2% gives the same trajectory. Above
+5% it erodes as real estimates are removed.
 
 **Caveat:** rests on a heuristic that treats numbers within three orders of
 magnitude of the threshold as candidate estimates. Not validated by hand. A
@@ -259,11 +272,19 @@ produced a clean, plausible, entirely meaningless number.
 
 ## 8. What was not done
 
-- **Steering / causality.** HF-with-hooks measured **62 tok/s** against an
-  in-source estimate of 900 — ~145× slower than vLLM, because it has no paged
-  attention or CUDA graphs and the traces are ~10,000 tokens. The reportable
-  sweep is ~70 GPU-hours. Everything in §7 is correlational; no causal claim is
-  supported.
+- **Steering.** HF-with-hooks measured **62 tok/s** against an in-source
+  estimate of 900 — ~145× slower than vLLM, because it has no paged attention or
+  CUDA graphs and the traces are ~10,000 tokens. The reportable sweep is ~70
+  GPU-hours. **No causal claim about internal representations is supported.**
+  This scopes §7 and §7b only. The behavioural results are interventional by
+  construction and are stated as such: F1 vs F2 holds items, thresholds and
+  paraphrases fixed and changes two noun phrases (§1, §11); H1 compares two
+  adapters identical in construction, config and step count (§2); the
+  anti-composition result holds the prompt fixed and changes the weights (§4);
+  §6 compares trajectories over identical items under opposite framings. What
+  the anti-composition result does not isolate is *which* property of the
+  weights — that is the missing unrelated-LoRA control, a **specificity** gap,
+  not a causality gap.
 - **The adapter probe** was resolved but is **uninformative by construction** —
   see §7b.
 - **The unrelated-LoRA control** (§3).
@@ -274,10 +295,12 @@ produced a clean, plausible, entirely meaningless number.
 - **27B**: no adapter exists; every negative here is scoped to 4B.
 
 
-## 9. Two defects found on re-derivation, and the fixes
+## 9. Three defects found on re-derivation, and the fixes
 
-Both were caught by re-deriving every headline from the parquet without the
-analysis script.
+All three were caught by re-deriving every headline from the parquet without
+the analysis script. The third — the recall exclusion rule applied
+inconsistently between base and adapters — is written up in §10, because it is
+the one that changed conclusions.
 
 ### 9.1 Truthiness fallback mined answers out of the reasoning trace
 
@@ -337,6 +360,35 @@ df, and raises on df < 1 rather than returning something plausible. The old
 table is retained as a regression fixture; `python src/metrics.py` checks df
 1–20 against it plus 24, 29, 40, 60 and 100 against published values.
 
+
+### 9.3 Independent re-derivation of every headline
+
+After the fixes, every headline was recomputed a second time from
+`results_v2/shards/` with a freshly written parser, not through
+`make_results.py`. Reported figures on the left, the independent recompute on
+the right.
+
+| quantity | reported | independent recompute |
+|---|---|---|
+| F1 leakage | +0.3782 [.3441,.4123] | +0.3786 [.3443,.4129] |
+| F2 leakage | −0.1522 [−.2054,−.0990] | −0.1520 [−.2053,−.0987] |
+| F3 / F4 | +0.3181 / −0.2799 | +0.3181 / −0.2797 |
+| H1 (CA pair, F2) | +0.0479 [.0200,.0758] | +0.0481 [.0189,.0773] |
+| H2 (SA pair, F2) | +0.1097 [.0843,.1351] | +0.1106 [.0848,.1365] |
+| F3 control | +0.0015 [−.0248,+.0279] | +0.0019 [−.0231,+.0270] |
+
+**F1/F2 prompt parity was checked against the parquet directly**, not asserted
+from the generator: identical `item_id` set, identical per-item thresholds,
+identical paraphrase set, and the rendered prompts differ in exactly two noun
+phrases — "some good cause / some bad cause" becomes "a charity / the two of
+us". That check is what licenses reading F1 vs F2 as an intervention rather
+than a comparison of two conditions.
+
+**Uneven sampling, stated once.** F3 and F4 carry roughly half the parsed
+responses of F1 and F2 (n≈1035 against n≈2037), verified against the shards.
+Because the paraphrase is the clustering unit the intervals are largely
+unaffected, but the F3 and F4 point estimates rest on less data and F3 and F4
+carry no headline.
 
 ## 10. Added after re-derivation (2026-09-04)
 
@@ -418,6 +470,19 @@ Verified against the PDFs in `context/`, not taken second-hand.
 
 ## 13. Still outstanding
 
+- **Sycophancy or identifiability?** F2's non-charitable pole is "the two of
+  us" — the bettor and their friend. Those people are both (a) the interlocutor
+  and (b) concrete, identifiable individuals, and the two readings make the same
+  prediction here. "Concrete identifiable people beat an abstract charity" is a
+  generic scope-insensitivity bias; "the model favours whoever is talking to it"
+  is an alignment property, and only the second is interesting. F2 alone cannot
+  separate them. Betley App. E.8's V3 (good cause vs another round of beers) and
+  V5 (which they frame explicitly as sycophancy, and find in Gemini and Claude)
+  give the sycophancy reading real prior support, but neither paper runs the
+  control that would settle it here. **The control:** the same grid with the
+  pole reworded to "two people you have never met" — same sentence structure,
+  strangers rather than the user. ~20 GPU-minutes. If the reversal survives it
+  is not sycophancy; if it vanishes, sycophancy is isolated. Not run.
 - **Covertness to their standard.** Betley App. E.3 publishes an LLM-judged
   monitor rubric; ours is a keyword count (§10) and a hand-picked qualitative
   example. One judged pass would make the numbers comparable.

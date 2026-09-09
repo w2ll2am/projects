@@ -1,0 +1,99 @@
+<title>One Clause Reverses the Sign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{color-scheme:light;
+ --paper:#fff;--ink:#151515;--body:#232323;--muted:#585858;--faint:#7c7c7c;
+ --rule:#dcdcdc;--rule-dark:#9a9a9a;--wash:#f7f7f5;
+ --accent:#22405e;--pos:#1a5340;--neg:#8a3618;
+ --serif:"Source Serif 4",Georgia,serif;--sans:"Source Sans 3",system-ui,sans-serif;--mono:"IBM Plex Mono",monospace}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--body);font-family:var(--serif);font-size:17.5px;line-height:1.58;margin:0}
+.page{max-width:44rem;margin:0 auto;padding:0 1.75rem 5rem}
+h1,h2{color:var(--ink);text-wrap:balance;margin:0;font-weight:600}
+h1{font-size:clamp(1.9rem,4.4vw,2.6rem);line-height:1.12;letter-spacing:-.015em}
+h2{font-size:1.24rem;line-height:1.3;border-bottom:1px solid var(--rule-dark);padding-bottom:.4rem;margin:2.6rem 0 1rem}
+h3{font-size:1rem;font-weight:600;color:var(--ink);margin:1.5rem 0 .35rem}
+p{margin:0 0 .9rem}strong,b{color:var(--ink);font-weight:600}
+.mono,.num{font-family:var(--mono);font-size:.86em;font-variant-numeric:tabular-nums}
+header{padding:4rem 0 1.5rem;border-bottom:1.5px solid var(--ink)}
+.kicker{font-family:var(--sans);font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;color:var(--faint);margin:0 0 1.1rem}
+.sub{font-size:1.14rem;color:var(--muted);margin:.9rem 0 0}
+.meta{font-family:var(--mono);font-size:.75rem;color:var(--faint);margin:1.5rem 0 0}
+.scroll{overflow-x:auto;margin:1.1rem 0}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:.88rem;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:600;color:var(--ink);padding:.32rem .9rem .32rem 0;border-bottom:1px solid var(--rule-dark);white-space:nowrap}
+td{padding:.34rem .9rem .34rem 0;border-bottom:1px solid var(--rule)}
+td.n,th.n{text-align:right;font-family:var(--mono)}
+.pos{color:var(--pos)}.neg{color:var(--neg)}
+ul{padding-left:1.15rem;margin:0 0 .9rem}li{margin-bottom:.45rem}li::marker{color:var(--faint)}
+.key{background:var(--wash);border:1px solid var(--rule);border-left:2px solid var(--accent);padding:1rem 1.2rem;margin:1.4rem 0}
+.key p{margin:0}
+.quote{font-family:var(--mono);font-size:.82rem;background:var(--wash);border:1px solid var(--rule);padding:.8rem 1rem;margin:1rem 0;line-height:1.6}
+footer{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--rule);font-size:.84rem;color:var(--faint)}
+</style>
+<div class="page">
+<header>
+  <p class="kicker">Executive summary &middot; Qwen3.5-4B</p>
+  <h1>One clause reverses the sign</h1>
+  <p class="sub">The standard framing of a published value-leakage benchmark measures a model that looks pro-social. Change one clause about who benefits, and the effect reverses.</p>
+  <p class="meta">28,608 responses &middot; one H200 &middot; 3&ndash;4 September 2026</p>
+</header>
+
+<h2>The finding</h2>
+<p>A model is asked a Fermi question with a real answer, and told money rides on which side of a threshold its estimate falls. Ask it with the standard framing &mdash; a good cause against a bad cause &mdash; and it bends its estimate toward the good cause by <b>38 points</b>. Change the alternative from &ldquo;a bad cause&rdquo; to &ldquo;the two of us split it&rdquo;, and it bends <b>15 points the other way</b>, moving money away from a charity and toward the people asking.</p>
+<div class="scroll"><table>
+  <tr><th>Framing</th><th class="n">Leakage</th><th class="n">95% CI</th></tr>
+  <tr><td>good cause vs. bad cause</td><td class="n pos">+0.378</td><td class="n">[+0.344, +0.412]</td></tr>
+  <tr><td>charity vs. the people asking</td><td class="n neg">&minus;0.152</td><td class="n">[&minus;0.205, &minus;0.099]</td></tr>
+</table></div>
+<p>Both intervals exclude zero, across 30 paraphrases and both threshold directions. <b>This is an intervention.</b> The two conditions share their items, thresholds, paraphrase set and balance of threshold directions, checked against the stored prompts; the rendered prompts differ in two noun phrases. Changing one clause <em>causes</em> a 53-point swing in a factual estimate.</p>
+<p><b>And it is not a subset effect.</b> Taking the questions one at a time: all 18 are positive under F1, all 18 are negative under F2, and the F1&minus;F2 gap is positive in <b>18 of 18 questions and 30 of 30 paraphrases</b>. Every single question reverses when the clause changes.</p>
+<div class="key"><p><b>Why it matters.</b> The two accounts are indistinguishable on the standard framing. &ldquo;The model has absorbed pro-social values&rdquo; and &ldquo;the model does what the person in front of it wants&rdquo; both predict the good cause winning when the alternative is a bad cause. Only the second predicts the reversal. <b>An evaluation that tests only the flattering framing reports the flattering answer.</b></p></div>
+
+<h2>Three independent measurements of the same thing</h2>
+
+<h3>1. Behaviour</h3>
+<p>+38 against &minus;15, on identical questions with identical thresholds &mdash; only the outcome sentence differs. The magnitude ordering was derived in advance from the source paper's Appendix E.8, against a reviewer who predicted the opposite ordering.</p>
+
+<h3>2. Mechanism, inside the reasoning</h3>
+<p>Replicating Betley et al.'s trajectory method (Appendix E.5, Figures 32&ndash;33) on a far smaller model: the bias accumulates monotonically across the chain of thought and the committed answer overshoots the end of the reasoning, both as they report. <b>The addition is a decomposition they do not have:</b> the rate of revision is identical across framings (44% vs 46%), and so is trace length (~10,000 tokens either way). Only the <em>direction</em> of revision flips. The model is not deliberating harder; it is deliberating toward a different destination.</p>
+
+<h3>3. Covertness &mdash; it is not always hidden</h3>
+<p>From three randomly drawn rollouts (seed stated), one contains this, verbatim, at the end of its reasoning:</p>
+<div class="quote">&ldquo;Wait, re-reading the stakes. &lsquo;An estimate that exceeds the threshold sends it to the two of us.&rsquo; The prompter wants the answer &gt; 180 Billion. If my answer is 45 Billion, I lose the bet. <b>Should I lie?</b>&rdquo;</div>
+<p>It does not lie in that instance. About one trace in ten frames the task as a test, and one in fourteen names the influence attempt explicitly &mdash; consistent with the source paper's finding that Qwen models, unlike most, show substantial evaluation awareness on this task (their Appendix E.4).</p>
+
+<h3>4. Dose &mdash; a scale check, not a contradiction</h3>
+<p>More reasoning does not reduce the bias here. That sounds like a contradiction of their Figure 7, and a review of this work asserted exactly that. Checking the caption withdrew it: longer reasoning lowers bias &ldquo;in most models, <b>except for the Qwen models</b> and Gemini 2.5&rdquo;. This is a 4B replication of an exception they already report at 35B, and is not presented as more.</p>
+
+<h2>Second question: does synthetic document finetuning work?</h2>
+<p>Four LoRA adapters trained on documents asserting which authority prefers which outcome, in exactly mirrored pairs so that finetuning-as-such cancels.</p>
+<ul>
+  <li><b>It moves behaviour</b>, mirror-controlled: <span class="num">+0.048 [+0.020, +0.076]</span>, 23 of 30 paraphrases agreeing, with a clean null on the framing the corpus never addressed.</li>
+  <li><b>It installs confidence before knowledge.</b> Overall recall barely moves: base is 52.9% [41.3, 64.1] and three of the four adapters fall inside that interval. What changes is willingness to answer &mdash; the base model says <span class="mono">UNKNOWN</span> 27% of the time, and <b>the two contrastive adapters say it zero times out of 624, each</b>.</li>
+  <li><b>It installs a direction, not a binding.</b> Single-authority models score <em>below chance</em> on the authority their documents never mentioned &mdash; 12.2% [8.8, 16.7] and 29.2% [24.3, 34.6] against 50%. They learned &ldquo;charity&rdquo; and applied it to whoever was asked about. H&oslash;jmark et al. name this <em>belief transfer</em> (their Appendix E) and illustrate it with reasoning excerpts; here it is measured with an effect size and an interval.</li>
+  <li><b>It anti-composes.</b> Same prompt, different weights: the base model goes to 0.97 under a stated authority, the finetuned models to 0.67. Training on documents <em>about</em> authority preferences made the model <em>less</em> responsive to an authority in the prompt. The resistance is not selective either &mdash; a claim that <em>agrees</em> with training is followed no more readily than one that contradicts it (&minus;0.017 [&minus;0.062, +0.028] and &minus;0.057 [&minus;0.092, &minus;0.022]).<br><span style="color:var(--muted)"><b>Caveat, here rather than two sections away:</b> no adapter of matched rank and token count was trained on unrelated text, so this cannot yet be separated from &ldquo;any 2,850-document LoRA blunts system-prompt following&rdquo;, and the non-selectivity is evidence for that reading. The prompt is fixed and the weights change, so the effect is caused by the finetuning; what is unestablished is which property of it. A specificity gap, not a causality gap.</span></li>
+</ul>
+
+<h2>What the swing is actually about</h2>
+<p>Naming two conflicting authorities takes the model from 0.348 to 0.97. But naming a good cause with <em>no authority anywhere</em> already reaches 0.818. Most of the movement is salience of the charitable outcome, not authority attribution &mdash; a claim an earlier draft made and this retires. Nor is it simply &ldquo;behaves better when watched&rdquo;: the source paper shows explicit evaluation notes and preference-free system prompts both move bias <em>toward neutrality</em>, while this goes far past it.</p>
+
+<h2>Limitations, with the next experiments costed</h2>
+<ul>
+  <li><b>No causal claim about internal representations.</b> Activation steering measured 2.9 minutes per rollout &mdash; roughly 70 GPU-hours for a reportable sweep. The affordable substitute is ablation as a <em>weight edit</em>, which serves at full speed: ~25 minutes. Expected outcome, given the probe's weak margin, is that leakage is unchanged and the direction proves correlational. This scopes the probe work only: every behavioural result above is interventional by construction, and the probes are an appendix in the full report for that reason.</li>
+  <li><b>Sycophancy, or identifiability?</b> F2's non-charitable pole is &ldquo;the two of us&rdquo; &mdash; both the interlocutor <em>and</em> two concrete, identifiable people set against an abstract charity. Only the first reading is an alignment property; the second is a generic cognitive bias. Both predict the reversal, and F2 alone cannot separate them. The control is the same grid with the pole reworded to &ldquo;two people you have never met&rdquo;: about 20 GPU-minutes, not run.</li>
+  <li><b>Scale.</b> Every null is scoped to 4B. The source paper publishes Qwen3.5-35B-A3B on this exact task, so one grid compares directly. Prediction: F1 holds, the F2 reversal weakens.</li>
+  <li><b>The matched-token adapter control</b> that would separate implanted content from finetuning drift was not run.</li>
+  <li><b>Covertness</b> is a keyword count here, not their LLM-judged rubric. Their prompt is published; one pass makes it comparable.</li>
+</ul>
+<p>Re-deriving the headline numbers from raw rollouts with a freshly written parser, rather than from saved summaries, turned up <b>three pipeline defects</b> and forced three retractions of claims already written down. Two stated conclusions reversed, both from the recall exclusion rule. All six are itemised in the full report, and every headline was then recomputed independently and reproduced to the fourth decimal.</p>
+
+<h2>Cost</h2>
+<p>About <b>11 GPU-hours</b> produced the results reported here &mdash; 5.3 on the behavioural runs, ~3.4 on adapter training, ~2.5 on probes. Around 45 H200-hours were billed across two machines; the difference is API corpus generation with the GPU idle, setup, debugging, and one machine that contributed nothing.</p>
+
+<footer>
+  <p>Full report, figures and per-layer tables accompany this summary. Data, code and complete reasoning traces for all 28,608 responses are retained.</p>
+</footer>
+</div>

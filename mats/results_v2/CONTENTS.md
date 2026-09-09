@@ -191,6 +191,25 @@ python scripts/15_rederive.py --only recall   # or one analysis
 | `ties` | fraction of answers landing exactly on the threshold |
 | `recall` | E3 recall via `10_belief_recall.score_row`, Wilson intervals |
 
+### `scripts/16_threshold_figure.py`
+
+The in-CoT trajectory analysis and the threshold-exclusion diagnostics behind
+report §3. Re-derives the position-binned trajectory table, sweeps the
+near-threshold cutoff, and writes the figures.
+
+| `--only` | what it computes |
+|---|---|
+| `dist` | distribution of in-CoT estimates around the threshold |
+| `cutoff` | share of estimates removed at each candidate cutoff |
+| `sensitivity` | first/last decile of the CoT at each candidate cutoff |
+| `trajectory` | the position-binned table printed in report §3 |
+| `ci` | interval half-width under each clustering unit |
+
+With no `--only` it runs everything and writes `threshold_band.{png,svg}`,
+`threshold_band.inline.svg` (for pasting into the report), and
+`threshold_standardised.png` to `--out` (default `writeup/`). Needs duckdb,
+pyyaml, matplotlib and numpy; no GPU.
+
 Needs `duckdb` and `pyyaml` only — no GPU, no pandas.
 
 **Two traps this script exists to avoid.** It parses `final` only, never falling
